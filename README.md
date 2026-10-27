@@ -17,7 +17,7 @@ The published EXE may predate the Particles and Goku modes. To use them now, run
 ## Getting started
 
 1. Double-click `AVVIA_LOCALE.bat`.
-2. In the start menu, choose **Normal Vanish**, **Naruto Vanish**, **Particles**, or **Goku** with the mouse or the `1`, `2`, `3`, and `4` keys.
+2. In the start menu, choose **Normal Vanish**, **Naruto Vanish**, **Goku**, or **Particles** with the mouse or the `1`, `2`, `3`, and `4` keys.
 3. Step out of the camera frame for 4 seconds while the background is captured. The terminal tells you when you can step back in.
 
 **Normal Vanish:** Raise your index and middle fingers in a V sign. The dissolve starts as soon as the gesture is recognized and lasts about 3.6 seconds.
