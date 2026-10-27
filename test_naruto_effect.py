@@ -135,6 +135,10 @@ class MenuTests(unittest.TestCase):
             self.assertEqual(app.choose_mode(), "naruto")
             key.return_value = ord("1")
             self.assertEqual(app.choose_mode(), "normal")
+            key.return_value = ord("3")
+            self.assertEqual(app.choose_mode(), "goku")
+            key.return_value = ord("4")
+            self.assertEqual(app.choose_mode(), "particles")
 
 
 class NarutoVideoLoopTests(unittest.TestCase):

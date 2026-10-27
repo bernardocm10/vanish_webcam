@@ -22,7 +22,7 @@ The published EXE may predate the Particles and Goku modes. To use them now, run
 
 **Normal Vanish:** Raise your index and middle fingers in a V sign. The dissolve starts as soon as the gesture is recognized and lasts about 3.6 seconds.
 
-**Particles:** *(described upstream but not included in this source code; `--mode particles` is not available.)* Make the same V sign as in Normal Vanish. Your silhouette breaks into small colored fragments that drift sideways as if carried by the wind. The effect lasts about 2.1 seconds. It captures your silhouette once when the effect starts to keep the video smooth.
+**Particles:** Make the same V sign as in Normal Vanish. Your silhouette breaks into small colored fragments that drift sideways as if carried by the wind. The effect lasts about 2.1 seconds. It captures your silhouette once when the effect starts to keep the video smooth.
 
 **Goku:** Hold your index and middle fingers straight and together against your forehead for 1 second. Animated vertical comic-style lines run across your silhouette just before you teleport away and linger briefly afterward. To reappear, lower your hand, then repeat the gesture for another 1 second. The return uses the reverse effect. If you break the pose, the countdown starts over. If you add an `assets/teleport.MP3` (not included), it plays on both disappearance and reappearance. The terminal shows the countdown for each gesture. The `V` and `R` keys are disabled in this mode: the gesture is the only way to disappear and reappear. No text is overlaid on the video.
 
@@ -33,6 +33,7 @@ To start a mode without the menu:
 ```powershell
 local_app\AVVIA_LOCALE.bat --mode naruto
 local_app\AVVIA_LOCALE.bat --mode normal
+local_app\AVVIA_LOCALE.bat --mode particles
 local_app\AVVIA_LOCALE.bat --mode goku
 ```
 
@@ -93,4 +94,4 @@ Run the tests from the project folder:
 .venv/bin/python -m unittest
 ```
 
-Each effect is a class in `modes.py` (`NormalMode`, `NarutoMode`, `GokuMode`): it turns detection results into phases (`ready`, `vanishing`, `vanished`, and `appearing` for Goku) and draws each frame. `vanish_cam.py` only runs the camera, calibration, background updates, keys and outputs; gesture detection runs in a background thread (`AsyncRecognizer`). To add an effect, subclass `Mode`, register it in `MODES` and add its detector in `create_tasks` and `detection_function`.
+Each effect is a class in `modes.py` (`NormalMode`, `NarutoMode`, `ParticlesMode`, `GokuMode`): it turns detection results into phases (`ready`, `vanishing`, `vanished`, and `appearing` for Goku) and draws each frame. `vanish_cam.py` only runs the camera, calibration, background updates, keys and outputs; gesture detection runs in a background thread (`AsyncRecognizer`). To add an effect, subclass `Mode`, register it in `MODES` and add its detector in `create_tasks` and `detection_function`.

@@ -23,6 +23,9 @@ try:
         overlay_log, render_substitution, substitution_anchor,
     )
     from .normal_effect import VANISH_SECONDS, apply_dissolve, make_dissolve_fields
+    from .particles_effect import (
+        EFFECT_SECONDS as PARTICLES_EFFECT_SECONDS, ParticleCloud, make_particles, render_particles,
+    )
 except ImportError:
     from goku_effect import (
         EFFECT_SECONDS as GOKU_EFFECT_SECONDS, HoldTracker, make_speed_lines,
@@ -33,6 +36,9 @@ except ImportError:
         overlay_log, render_substitution, substitution_anchor,
     )
     from normal_effect import VANISH_SECONDS, apply_dissolve, make_dissolve_fields
+    from particles_effect import (
+        EFFECT_SECONDS as PARTICLES_EFFECT_SECONDS, ParticleCloud, make_particles, render_particles,
+    )
 
 
 # frame BGR, timestamp in ms -> maschera della persona (0..1) a piena risoluzione.
@@ -94,7 +100,17 @@ class Mode:
         raise NotImplementedError
 
 
-class NormalMode(Mode):
+class VSignMode(Mode):
+    """Effects triggered by index and middle fingers apart in a V."""
+
+    def on_detection(self, result, now: float) -> None:
+        name, score = result
+        # Avvia al primo riconoscimento affidabile della V.
+        if self.phase == "ready" and name == "Victory" and score >= 0.62:
+            self.vanish(now)
+
+
+class NormalMode(VSignMode):
     name = "normal"
     instructions = "Segno a V con indice e medio: dissolvenza."
 
@@ -103,12 +119,6 @@ class NormalMode(Mode):
         self.fields: tuple[np.ndarray, np.ndarray] | None = None
         self.mask: np.ndarray | None = None
         self.mask_at = float("-inf")
-
-    def on_detection(self, result, now: float) -> None:
-        name, score = result
-        # Avvia al primo riconoscimento affidabile della V.
-        if self.phase == "ready" and name == "Victory" and score >= 0.62:
-            self.vanish(now)
 
     def reappear(self) -> None:
         super().reappear()
@@ -132,6 +142,38 @@ class NormalMode(Mode):
             self.phase = "vanished"
             return info.background
         return apply_dissolve(info.frame, info.background, self.mask, progress, *self.fields)
+
+
+class ParticlesMode(VSignMode):
+    name = "particles"
+    instructions = "Segno a V: la sagoma si sgretola in frammenti portati dal vento."
+
+    def __init__(self, segment: Segment, sound=None):
+        super().__init__(segment, sound)
+        self.cloud: ParticleCloud | None = None
+
+    def vanish(self, now: float) -> None:
+        super().vanish(now)
+        self.cloud = None
+
+    def reappear(self) -> None:
+        super().reappear()
+        self.cloud = None
+
+    def render(self, info: FrameInfo) -> np.ndarray:
+        if self.phase == "ready":
+            return info.frame
+        if self.phase == "vanished":
+            return info.background
+        # Sagoma catturata una sola volta: niente segmentazione durante il volo.
+        if self.cloud is None:
+            self.cloud = make_particles(info.frame, self.segment(info.frame, info.timestamp_ms))
+        elapsed = info.now - self.started
+        if elapsed >= PARTICLES_EFFECT_SECONDS:
+            self.phase = "vanished"
+            self.cloud = None
+            return info.background
+        return render_particles(info.background, self.cloud, elapsed)
 
 
 class NarutoMode(Mode):
@@ -268,4 +310,4 @@ class GokuMode(Mode):
         return display
 
 
-MODES: dict[str, type[Mode]] = {mode.name: mode for mode in (NormalMode, NarutoMode, GokuMode)}
+MODES: dict[str, type[Mode]] = {mode.name: mode for mode in (NormalMode, NarutoMode, ParticlesMode, GokuMode)}

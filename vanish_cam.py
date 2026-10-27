@@ -89,7 +89,7 @@ def positive_fps(value: str) -> float:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Scegli Normal Vanish, Naruto Vanish o Goku per la webcam."
+        description="Scegli Normal Vanish, Naruto Vanish, Goku o Particles per la webcam."
     )
     parser.add_argument("--camera", type=int, default=0, help="Indice della webcam")
     # 1280x720 e' il 16:9 nativo della maggior parte delle webcam (via MJPG):
@@ -113,7 +113,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--virtual-device", help="Nome del dispositivo virtuale da usare")
     parser.add_argument(
-        "--mode", choices=("normal", "naruto", "goku"),
+        "--mode", choices=tuple(MODES),
         help="Salta il menu iniziale e avvia direttamente la modalità scelta",
     )
     parser.add_argument(
@@ -132,7 +132,7 @@ def choose_mode() -> str | None:
     """Simple keyboard/mouse menu shown before the clean camera feed."""
     title = "Scegli effetto"
     selected = [None]
-    window = np.zeros((540, 700, 3), dtype=np.uint8)
+    window = np.zeros((660, 700, 3), dtype=np.uint8)
     window[:] = (26, 29, 34)
     cv2.putText(window, "SCEGLI IL TUO VANISH", (68, 88),
                 cv2.FONT_HERSHEY_SIMPLEX, 0.85, (236, 239, 242), 2, cv2.LINE_AA)
@@ -140,6 +140,7 @@ def choose_mode() -> str | None:
         ("normal", "1  NORMAL VANISH", "Segno a V  /  dissolvenza", 140),
         ("naruto", "2  NARUTO VANISH", "Mani unite  /  tronco e fumo", 260),
         ("goku", "3  GOKU", "Due dita sulla fronte per 1s  /  teletrasporto", 380),
+        ("particles", "4  PARTICLES", "Segno a V  /  frammenti nel vento", 500),
     )
     for mode, heading, detail, top in buttons:
         cv2.rectangle(window, (65, top), (635, top + 94), (48, 54, 62), -1, cv2.LINE_AA)
@@ -167,6 +168,8 @@ def choose_mode() -> str | None:
                 selected[0] = "naruto"
             elif key == ord("3"):
                 selected[0] = "goku"
+            elif key == ord("4"):
+                selected[0] = "particles"
             elif key in (ord("q"), 27):
                 return None
             if cv2.getWindowProperty(title, cv2.WND_PROP_VISIBLE) < 1:
@@ -801,7 +804,7 @@ def self_test() -> int:
         raise RuntimeError(f"Risorse mancanti: {', '.join(missing)}")
     load_log()
     import pygame.mixer  # The distributed build must contain its MP3 decoder.
-    for mode in ("normal", "naruto", "goku"):
+    for mode in MODES:
         segmenter, recognizer = create_tasks(mode)
         try:
             recognizer.close()
