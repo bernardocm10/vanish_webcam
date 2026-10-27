@@ -2,11 +2,12 @@ import tempfile
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 import numpy as np
 
 import vanish_cam as app
+from modes import FrameInfo, GokuMode
 from goku_effect import (
     CHEEK_LEFT, CHEEK_RIGHT, FOREHEAD_TOP, NOSE_BRIDGE, HoldTracker, face_reference,
     forehead_fingers_pose, make_speed_lines, render_teleport, sound_path, teleport_region,
@@ -132,6 +133,50 @@ class SoundPathTests(unittest.TestCase):
             self.assertIsNone(sound_path(assets))
             (assets / "teleport.mp3").write_bytes(b"x")
             self.assertEqual(sound_path(assets), assets / "teleport.mp3")
+
+
+class GokuModeTests(unittest.TestCase):
+    def setUp(self):
+        self.sound = Mock()
+        self.mode = GokuMode(segment=lambda frame, timestamp: self.mask, sound=self.sound)
+        self.frame = np.full((60, 80, 3), 40, np.uint8)
+        self.background = np.full((60, 80, 3), 200, np.uint8)
+        self.mask = np.zeros((60, 80), np.float32)
+        self.mask[10:60, 30:50] = 1.0
+
+    def render(self, now):
+        return self.mode.render(FrameInfo(self.frame, self.background, now, int(now * 1000)))
+
+    def hold_pose(self, start):
+        for step in range(0, 11):
+            self.mode.on_detection(True, start + step * 0.1)
+
+    def test_pose_held_vanishes_and_repeated_pose_brings_person_back(self):
+        with patch("builtins.print"):
+            self.hold_pose(0.0)
+            self.assertEqual(self.mode.phase, "vanishing")
+            self.render(0.5)
+            np.testing.assert_array_equal(self.render(2.6), self.background)
+            self.assertEqual(self.mode.phase, "vanished")
+            self.assertTrue(self.mode.detecting)
+            self.hold_pose(3.0)  # Mano mai abbassata: non riappare.
+            self.assertEqual(self.mode.phase, "vanished")
+            self.mode.on_detection(False, 4.2)
+            self.mode.on_detection(False, 4.6)
+            self.hold_pose(4.7)
+            self.assertEqual(self.mode.phase, "appearing")
+            self.assertFalse(self.mode.detecting)
+            self.render(6.0)
+            last = self.render(7.3)  # Ultimo frame dell'effetto: persona intera sullo sfondo.
+            np.testing.assert_array_equal(last[20:60, 35:45], self.frame[20:60, 35:45])
+            self.assertEqual(self.mode.phase, "ready")
+            np.testing.assert_array_equal(self.render(7.4), self.frame)
+        self.assertEqual(self.sound.play.call_count, 2)
+
+    def test_keyboard_is_disabled_and_detection_uses_half_resolution(self):
+        self.assertFalse(self.mode.manual_keys)
+        big = np.zeros((720, 1280, 3), np.uint8)
+        self.assertEqual(self.mode.detection_image(big).shape, (360, 640, 3))
 
 
 class GokuDetectorTests(unittest.TestCase):

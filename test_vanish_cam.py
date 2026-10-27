@@ -4,9 +4,9 @@ from types import SimpleNamespace
 import numpy as np
 import mediapipe as mp
 
+from modes import NormalMode
 from vanish_cam import (
-    AppState, MultiViewGestureRecognizer, recognize_gesture, start_vanish_on_gesture,
-    update_background, victory_landmark_score,
+    MultiViewGestureRecognizer, recognize_gesture, update_background, victory_landmark_score,
 )
 
 
@@ -127,25 +127,27 @@ class VictoryGestureTests(unittest.TestCase):
 
 
 class ImmediateAnimationTests(unittest.TestCase):
+    def setUp(self):
+        self.mode = NormalMode(segment=lambda frame, timestamp: None)
+
     def test_first_recognized_v_starts_animation_immediately(self):
-        state = AppState(phase="ready")
-        self.assertTrue(start_vanish_on_gesture(state, "Victory", 0.9, 12.5))
-        self.assertEqual(state.phase, "vanishing")
-        self.assertEqual(state.vanish_started, 12.5)
+        self.mode.on_detection(("Victory", 0.9), 12.5)
+        self.assertEqual(self.mode.phase, "vanishing")
+        self.assertEqual(self.mode.started, 12.5)
 
     def test_other_or_weak_gestures_do_not_vanish(self):
         for name, score in (("No_Hand", 0.0), ("Hand_Detected", 0.0), ("Victory", 0.61)):
             with self.subTest(name=name, score=score):
-                state = AppState(phase="ready")
-                self.assertFalse(start_vanish_on_gesture(state, name, score, 12.5))
-                self.assertEqual(state.phase, "ready")
-                self.assertIsNone(state.vanish_started)
+                self.mode.on_detection((name, score), 12.5)
+                self.assertEqual(self.mode.phase, "ready")
+                self.assertIsNone(self.mode.started)
 
     def test_only_ready_phase_responds(self):
-        for phase in ("calibrating", "vanishing", "vanished"):
-            state = AppState(phase=phase)
-            self.assertFalse(start_vanish_on_gesture(state, "Victory", 0.9, 12.5))
-            self.assertEqual(state.phase, phase)
+        for phase in ("vanishing", "vanished"):
+            self.mode.phase, self.mode.started = phase, 3.0
+            self.mode.on_detection(("Victory", 0.9), 12.5)
+            self.assertEqual(self.mode.phase, phase)
+            self.assertEqual(self.mode.started, 3.0)
 
 
 class BackgroundUpdateTests(unittest.TestCase):

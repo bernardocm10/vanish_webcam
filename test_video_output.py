@@ -1,4 +1,6 @@
 import argparse
+import threading
+import time
 import unittest
 from contextlib import ExitStack
 from types import SimpleNamespace
@@ -17,6 +19,37 @@ def arguments(**overrides):
     )
     values.update(overrides)
     return argparse.Namespace(**values)
+
+
+class InlineRecognizer:
+    """Come AsyncRecognizer ma nello stesso thread: risultati deterministici nei test."""
+
+    busy = False
+
+    def __init__(self, detect, close):
+        self.detect, self.close_detector, self.result = detect, close, None
+
+    def submit(self, rgb, timestamp_ms):
+        self.result = (self.detect(rgb, timestamp_ms), timestamp_ms)
+
+    def take_result(self):
+        result, self.result = self.result, None
+        return result
+
+    def close(self):
+        self.close_detector()
+
+
+def video_clock(frames, times):
+    """capture.read e perf_counter finti: ogni frame letto porta il suo istante."""
+    clock = [times[0]]
+    queue = list(zip(frames, times))
+
+    def read():
+        frame, clock[0] = queue.pop(0)
+        return True, frame
+
+    return read, (lambda: clock[0])
 
 
 class VirtualCameraTests(unittest.TestCase):
@@ -65,7 +98,8 @@ class VideoLoopTests(unittest.TestCase):
     def run_mock_video(self, send_error=None, gesture=("No_Hand", 0.0)):
         capture = Mock()
         frames = [np.full((24, 40, 3), color, np.uint8) for color in (10, 40, 80, 120, 160)]
-        capture.read.side_effect = [(True, frame) for frame in frames]
+        read, clock = video_clock(frames, (0, 4.1, 4.3, 5.0, 8.2))
+        capture.read.side_effect = read
         segmenter, recognizer = Mock(), Mock()
         camera = Mock(width=40, height=24)
         camera.send.side_effect = send_error
@@ -78,8 +112,8 @@ class VideoLoopTests(unittest.TestCase):
             opening = mocks.enter_context(patch.object(app, "open_virtual_camera", return_value=camera))
             mocks.enter_context(patch.object(app, "person_mask", return_value=np.ones((24, 40), np.float32)))
             mocks.enter_context(patch.object(app, "recognize_gesture", return_value=gesture))
-            times = (0, 0, 0.1, 4.1, 4.3, 4.35, 5.0, 5.02, 8.2, 8.23)
-            mocks.enter_context(patch.object(app.time, "perf_counter", side_effect=times))
+            mocks.enter_context(patch.object(app, "AsyncRecognizer", InlineRecognizer))
+            mocks.enter_context(patch.object(app.time, "perf_counter", side_effect=clock))
             mocks.enter_context(patch.object(app.cv2, "namedWindow"))
             mocks.enter_context(patch.object(app.cv2, "resizeWindow"))
             destroy = mocks.enter_context(patch.object(app.cv2, "destroyAllWindows"))
@@ -120,6 +154,62 @@ class VideoLoopTests(unittest.TestCase):
 
     def test_all_devices_close_on_send_error(self):
         self.run_mock_video(send_error=RuntimeError("send failed"))
+
+
+class AsyncRecognizerTests(unittest.TestCase):
+    def wait_result(self, recognizer):
+        for _ in range(200):
+            result = recognizer.take_result()
+            if result is not None:
+                return result
+            time.sleep(0.01)
+        self.fail("Nessun risultato dal thread")
+
+    def test_detects_off_the_video_thread_and_closes_detector(self):
+        threads, closed = [], []
+
+        def detect(image, timestamp_ms):
+            threads.append(threading.current_thread().name)
+            return image.width, timestamp_ms
+
+        recognizer = app.AsyncRecognizer(detect, lambda: closed.append(True))
+        try:
+            recognizer.submit(np.zeros((6, 9, 3), np.uint8), 120)
+            self.assertEqual(self.wait_result(recognizer), ((9, 120), 120))
+            self.assertIsNone(recognizer.take_result())  # Ogni risultato si legge una volta.
+            self.assertEqual(threads, ["gesture"])
+        finally:
+            recognizer.close()
+        self.assertEqual(closed, [True])
+
+    def test_detector_error_reaches_the_video_loop(self):
+        def detect(image, timestamp_ms):
+            raise ValueError("modello rotto")
+
+        recognizer = app.AsyncRecognizer(detect, lambda: None)
+        try:
+            recognizer.submit(np.zeros((4, 4, 3), np.uint8), 1)
+            for _ in range(200):
+                if not recognizer.busy:
+                    break
+                time.sleep(0.01)
+            with self.assertRaisesRegex(RuntimeError, "modello rotto"):
+                recognizer.take_result()
+        finally:
+            recognizer.close()
+
+
+class PersonSegmenterTests(unittest.TestCase):
+    def test_one_segmentation_per_timestamp(self):
+        masks = [np.zeros((4, 6), np.float32), np.ones((4, 6), np.float32)]
+        with patch.object(app, "person_mask", side_effect=masks) as segment:
+            segmenter = app.PersonSegmenter(Mock())
+            frame = np.zeros((4, 6, 3), np.uint8)
+            first = segmenter(frame, 100)
+            self.assertIs(segmenter(frame, 100), first)
+            self.assertIsNot(segmenter(frame, 133), first)
+        self.assertEqual(segment.call_count, 2)
+        self.assertEqual(segment.call_args.args[2:], (133, 6, 4))
 
 
 if __name__ == "__main__":

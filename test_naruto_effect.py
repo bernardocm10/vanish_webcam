@@ -6,21 +6,26 @@ from unittest.mock import Mock, patch
 import numpy as np
 
 import vanish_cam as app
+from modes import NarutoMode
 from naruto_effect import (
     EFFECT_SECONDS, falling_log_anchor, joined_hands_from_landmarks,
     landed_log_anchor, load_log, overlay_log, render_substitution, substitution_anchor,
 )
-from test_video_output import arguments
+from test_video_output import InlineRecognizer, arguments, video_clock
 
 
 class JoinedHandsTests(unittest.TestCase):
     def test_joined_hands_start_effect_immediately(self):
-        state = app.AppState(phase="ready")
-        self.assertFalse(app.start_naruto_on_join(state, False, 1.0))
-        self.assertTrue(app.start_naruto_on_join(state, True, 1.1))
-        self.assertEqual(state.phase, "naruto_vanishing")
-        self.assertEqual(state.vanish_started, 1.1)
-        self.assertFalse(app.start_naruto_on_join(state, True, 1.2))
+        sound = Mock()
+        mode = NarutoMode(segment=lambda frame, timestamp: None, sound=sound)
+        mode.on_detection(False, 1.0)
+        self.assertEqual(mode.phase, "ready")
+        mode.on_detection(True, 1.1)
+        self.assertEqual(mode.phase, "vanishing")
+        self.assertEqual(mode.started, 1.1)
+        mode.on_detection(True, 1.2)
+        self.assertEqual(mode.started, 1.1)
+        sound.play.assert_called_once()
 
     @staticmethod
     def hand(center_x, upward=True):
@@ -136,7 +141,8 @@ class NarutoVideoLoopTests(unittest.TestCase):
     def test_effect_is_sent_to_preview_and_virtual_camera(self):
         frames = [np.full((80, 120, 3), v, np.uint8) for v in (10, 40, 80, 120, 160)]
         capture = Mock()
-        capture.read.side_effect = [(True, frame) for frame in frames]
+        read, clock = video_clock(frames, (0, 4.1, 4.3, 4.5, 6.0))
+        capture.read.side_effect = read
         segmenter, recognizer = Mock(), Mock()
         recognizer.recognize_joined_hands.return_value = True
         sound = Mock()
@@ -150,9 +156,8 @@ class NarutoVideoLoopTests(unittest.TestCase):
             mocks.enter_context(patch.object(app, "VanishSound", return_value=sound))
             mocks.enter_context(patch.object(app, "open_virtual_camera", return_value=virtual))
             mocks.enter_context(patch.object(app, "person_mask", return_value=np.ones((80, 120), np.float32)))
-            mocks.enter_context(patch.object(app.time, "perf_counter", side_effect=(
-                0, 0, 0.1, 4.1, 4.3, 4.35, 4.40, 4.42, 5.05, 5.1, 5.9,
-            )))
+            mocks.enter_context(patch.object(app, "AsyncRecognizer", InlineRecognizer))
+            mocks.enter_context(patch.object(app.time, "perf_counter", side_effect=clock))
             mocks.enter_context(patch.object(app.cv2, "namedWindow"))
             mocks.enter_context(patch.object(app.cv2, "resizeWindow"))
             mocks.enter_context(patch.object(app.cv2, "destroyAllWindows"))

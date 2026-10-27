@@ -92,3 +92,5 @@ Run the tests from the project folder:
 ```bash
 .venv/bin/python -m unittest
 ```
+
+Each effect is a class in `modes.py` (`NormalMode`, `NarutoMode`, `GokuMode`): it turns detection results into phases (`ready`, `vanishing`, `vanished`, and `appearing` for Goku) and draws each frame. `vanish_cam.py` only runs the camera, calibration, background updates, keys and outputs; gesture detection runs in a background thread (`AsyncRecognizer`). To add an effect, subclass `Mode`, register it in `MODES` and add its detector in `create_tasks` and `detection_function`.
