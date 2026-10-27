@@ -63,7 +63,7 @@ MODE_CARDS = (
     ModeCard("normal", "Normal", "sinal de V — dissolução"),
     ModeCard("naruto", "Naruto", "palmas juntas — tronco e fumaça"),
     ModeCard("goku", "Goku", "dois dedos na testa, 1 s — teletransporte"),
-    ModeCard("particles", "Partículas", "sinal de V — fragmentos no vento"),
+    ModeCard("particles", "Partículas", "continência na testa — fragmentos no vento"),
 )
 # Quando l'effetto e' in corso la spia diventa rossa, come il tally di una telecamera in onda.
 ACCENTS = {card.key: TALLY for card in MODE_CARDS}

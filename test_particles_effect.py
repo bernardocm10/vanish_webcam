@@ -1,10 +1,49 @@
 import unittest
+from types import SimpleNamespace
 from unittest.mock import Mock
 
 import numpy as np
 
+import vanish_cam as app
+from goku_effect import CHEEK_LEFT, CHEEK_RIGHT, FOREHEAD_TOP, NOSE_BRIDGE
 from modes import FrameInfo, ParticlesMode
-from particles_effect import DEPART_SECONDS, EFFECT_SECONDS, make_particles, render_particles
+from particles_effect import (
+    BROW_LEFT, BROW_RIGHT, DEPART_SECONDS, EFFECT_SECONDS, make_particles, render_particles,
+    salute_pose, salute_reference,
+)
+
+WIDTH, HEIGHT = 640, 480
+
+
+def face_landmarks():
+    points = [SimpleNamespace(x=0.5, y=0.4) for _ in range(478)]
+    points[FOREHEAD_TOP] = SimpleNamespace(x=0.5, y=0.25)
+    points[NOSE_BRIDGE] = SimpleNamespace(x=0.5, y=0.40)
+    points[CHEEK_LEFT] = SimpleNamespace(x=0.38, y=0.45)
+    points[CHEEK_RIGHT] = SimpleNamespace(x=0.62, y=0.45)
+    points[BROW_LEFT] = SimpleNamespace(x=0.42, y=0.33)
+    points[BROW_RIGHT] = SimpleNamespace(x=0.58, y=0.33)
+    return points
+
+
+def finger(base, tip, bend=0.0):
+    """Four joints from base to tip; bend pulls the middle joints sideways (a curled finger)."""
+    return [SimpleNamespace(x=base[0] + (tip[0] - base[0]) * t, y=base[1] + (tip[1] - base[1]) * t + bend * t * (1 - t) * 4)
+            for t in (0.0, 0.35, 0.7, 1.0)]
+
+
+def salute(shift=0.0, spread=0.0, folded=False, bend=0.0):
+    """Hand coming from the side, fingers pointing at the brow on the right of the image."""
+    points = [SimpleNamespace(x=0.74 + shift, y=0.40) for _ in range(21)]
+    points[0] = SimpleNamespace(x=0.76 + shift, y=0.42)
+    rows = ((5, 0.30, 0.59), (9, 0.32, 0.58), (13, 0.34, 0.585), (17, 0.36, 0.60))
+    for number, (base, y, tip_x) in enumerate(rows):
+        tip_y = y + (number - 1.5) * spread
+        if folded and base in (13, 17):
+            points[base : base + 4] = finger((0.68 + shift, y), (0.665 + shift, y + 0.01))
+        else:
+            points[base : base + 4] = finger((0.68 + shift, y), (tip_x + shift, tip_y), bend)
+    return points
 
 
 class ParticlesEffectTests(unittest.TestCase):
@@ -42,15 +81,75 @@ class ParticlesEffectTests(unittest.TestCase):
         np.testing.assert_array_equal(render_particles(self.background, cloud, 0.5), self.background)
 
 
+class SalutePoseTests(unittest.TestCase):
+    def setUp(self):
+        self.face = salute_reference(face_landmarks(), WIDTH, HEIGHT)
+
+    def test_flat_hand_on_the_brow_is_a_salute(self):
+        self.assertTrue(salute_pose(salute(), self.face, WIDTH, HEIGHT))
+
+    def test_rejects_poses_that_are_not_a_salute(self):
+        self.assertFalse(salute_pose(salute(), None, WIDTH, HEIGHT))  # Nessun viso.
+        self.assertFalse(salute_pose(salute(shift=0.15), self.face, WIDTH, HEIGHT))  # Mano lontana.
+        self.assertFalse(salute_pose(salute(spread=0.06), self.face, WIDTH, HEIGHT))  # Dita a ventaglio.
+        self.assertFalse(salute_pose(salute(folded=True), self.face, WIDTH, HEIGHT))  # Posa di Goku.
+        self.assertFalse(salute_pose(salute(bend=0.05), self.face, WIDTH, HEIGHT))  # Dita piegate.
+        self.assertFalse(salute_pose(salute()[:20], self.face, WIDTH, HEIGHT))
+
+    def test_detector_remembers_the_brow_while_the_hand_covers_it(self):
+        face = Mock()
+        face.detect_for_video.side_effect = [
+            SimpleNamespace(face_landmarks=[face_landmarks()]),
+            SimpleNamespace(face_landmarks=[]),
+            SimpleNamespace(face_landmarks=[]),
+        ]
+        hands = Mock()
+        hands.detect_for_video.return_value = SimpleNamespace(hand_landmarks=[salute()])
+        detector = app.SalutePoseDetector(face, hands)
+        image = SimpleNamespace(width=WIDTH, height=HEIGHT)
+        self.assertTrue(detector.recognize_pose(image, 0))
+        self.assertTrue(detector.recognize_pose(image, 500))
+        self.assertFalse(detector.recognize_pose(image, 1600))
+
+    def test_particles_mode_uses_the_salute_detector(self):
+        recognizer = Mock()
+        detect = app.detection_function("particles", recognizer)
+        self.assertEqual(detect, recognizer.recognize_pose)
+
+
 class ParticlesModeTests(unittest.TestCase):
-    def test_v_sign_captures_silhouette_once_and_ends_on_background(self):
+    def test_salute_must_be_held_and_released_before_the_next_one(self):
+        mode = ParticlesMode(Mock())
+        mode.on_detection(True, 1.0)
+        mode.on_detection(True, 1.2)
+        self.assertEqual(mode.phase, "ready")
+        mode.on_detection(True, 1.45)
+        self.assertEqual(mode.phase, "vanishing")
+        mode.reappear()
+        mode.on_detection(True, 1.6)
+        mode.on_detection(True, 2.5)
+        self.assertEqual(mode.phase, "ready")  # Mano ancora sulla fronte.
+        mode.on_detection(False, 2.6)
+        mode.on_detection(False, 3.0)
+        mode.on_detection(True, 3.1)
+        mode.on_detection(True, 3.6)
+        self.assertEqual(mode.phase, "vanishing")
+
+    def test_hand_passing_over_the_forehead_does_not_trigger(self):
+        mode = ParticlesMode(Mock())
+        for now, saluting in ((1.0, True), (1.07, True), (1.14, False), (1.5, False), (1.6, True), (1.7, False)):
+            mode.on_detection(saluting, now)
+        self.assertEqual(mode.phase, "ready")
+
+    def test_salute_captures_silhouette_once_and_ends_on_background(self):
         frame = np.full((60, 80, 3), 40, np.uint8)
         background = np.full((60, 80, 3), 200, np.uint8)
         mask = np.zeros((60, 80), np.float32)
         mask[10:60, 30:50] = 1.0
         segment = Mock(return_value=mask)
         mode = ParticlesMode(segment)
-        mode.on_detection(("Victory", 0.9), 1.0)
+        mode.on_detection(True, 0.6)
+        mode.on_detection(True, 1.0)
         self.assertEqual(mode.phase, "vanishing")
         for now in (1.0, 1.5, 2.0, 2.5):
             mode.render(FrameInfo(frame, background, now, int(now * 1000)))

@@ -29,6 +29,7 @@ try:
     from .goku_effect import (
         SOUND_NAME as GOKU_SOUND_NAME, face_reference, forehead_fingers_pose, sound_path,
     )
+    from .particles_effect import salute_pose, salute_reference
     from .modes import MODES, FrameInfo, Mode
     from .call_audio import MIC_DESCRIPTION, CallSound, VirtualMic
     from .control_panel import ACCENTS, AMBER, FONT_DIR, FONTS, GREEN, MODE_CARDS, ControlPanel, PanelView
@@ -39,6 +40,7 @@ except ImportError:
     from goku_effect import (
         SOUND_NAME as GOKU_SOUND_NAME, face_reference, forehead_fingers_pose, sound_path,
     )
+    from particles_effect import salute_pose, salute_reference
     from modes import MODES, FrameInfo, Mode
     from call_audio import MIC_DESCRIPTION, CallSound, VirtualMic
     from control_panel import ACCENTS, AMBER, FONT_DIR, FONTS, GREEN, MODE_CARDS, ControlPanel, PanelView
@@ -180,7 +182,8 @@ def send_virtual_frame(camera, frame: np.ndarray) -> None:
 def download_models(mode: str = "normal") -> None:
     MODEL_DIR.mkdir(parents=True, exist_ok=True)
     for destination, url in MODEL_URLS.items():
-        if mode in ("naruto", "goku") and destination == GESTURE_MODEL:
+        # Solo Normal usa il riconoscitore di gesti; gli altri usano mani e viso.
+        if mode != "normal" and destination == GESTURE_MODEL:
             continue
         if destination.exists() and destination.stat().st_size > 100_000:
             continue
@@ -247,7 +250,7 @@ def create_segmenter() -> vision.ImageSegmenter:
 def create_recognizer(
     mode: str = "normal",
 ) -> MultiViewGestureRecognizer | MultiViewHandLandmarker | GokuPoseDetector:
-    if mode == "goku":
+    if mode in ("goku", "particles"):
         for model in (HAND_MODEL, FACE_MODEL):
             if not model.is_file():
                 raise RuntimeError(f"Modelo não encontrado: {model}")
@@ -273,7 +276,8 @@ def create_recognizer(
         except Exception:
             face.close()
             raise
-        return GokuPoseDetector(face, hands)
+        detector = SalutePoseDetector if mode == "particles" else GokuPoseDetector
+        return detector(face, hands)
     if mode == "naruto":
         if not HAND_MODEL.is_file():
             raise RuntimeError(f"Modelo das mãos não encontrado: {HAND_MODEL}")
@@ -629,6 +633,9 @@ class GokuPoseDetector:
     """Fronte dal Face Landmarker e dita dal Hand Landmarker sullo stesso frame."""
 
     FACE_MEMORY_MS = 1000
+    # Quale zona del viso serve e quale posa della mano la deve toccare.
+    reference = staticmethod(face_reference)
+    pose = staticmethod(forehead_fingers_pose)
 
     def __init__(self, face, hands):
         self.face = face
@@ -643,14 +650,14 @@ class GokuPoseDetector:
         faces = self.face.detect_for_video(image, timestamp_ms)
         self.face_visible = bool(faces.face_landmarks)
         if self.face_visible:
-            self.last_face = face_reference(faces.face_landmarks[0], image.width, image.height)
+            self.last_face = self.reference(faces.face_landmarks[0], image.width, image.height)
             self.last_face_ms = timestamp_ms
         elif timestamp_ms - self.last_face_ms > self.FACE_MEMORY_MS:
             self.last_face = None
         result = self.hands.detect_for_video(image, timestamp_ms)
         self.last_hand_count = len(result.hand_landmarks)
         return any(
-            forehead_fingers_pose(hand, self.last_face, image.width, image.height)
+            self.pose(hand, self.last_face, image.width, image.height)
             for hand in result.hand_landmarks
         )
 
@@ -659,6 +666,13 @@ class GokuPoseDetector:
             self.face.close()
         finally:
             self.hands.close()
+
+
+class SalutePoseDetector(GokuPoseDetector):
+    """Continenza: mano tesa con le dita unite sulla fronte o sulle sopracciglia."""
+
+    reference = staticmethod(salute_reference)
+    pose = staticmethod(salute_pose)
 
 
 class AsyncRecognizer:
@@ -752,7 +766,7 @@ class PersonSegmenter:
 def detection_function(mode: str, recognizer) -> Callable[[mp.Image, int], object]:
     if mode == "naruto":
         return recognizer.recognize_joined_hands
-    if mode == "goku":
+    if mode in ("goku", "particles"):
         return recognizer.recognize_pose
     # Cercata a ogni chiamata (non legata qui) cosi' i test possono sostituirla.
     return lambda image, timestamp_ms: recognize_gesture(recognizer, image, timestamp_ms)

@@ -7,8 +7,18 @@ from dataclasses import dataclass
 import cv2
 import numpy as np
 
+try:
+    from .goku_effect import face_reference, segment_distance
+except ImportError:
+    from goku_effect import face_reference, segment_distance
+
 
 EFFECT_SECONDS = 2.1
+# La continenza va tenuta un attimo: una mano che passa davanti alla fronte non basta.
+SALUTE_HOLD_SECONDS = 0.4
+# Face Mesh: estremita' esterne delle sopracciglia, verso le tempie.
+BROW_LEFT = 70
+BROW_RIGHT = 300
 # I frammenti partono entro DEPART_SECONDS e svaniscono entro LIFE_SECONDS[1]:
 # la somma resta dentro EFFECT_SECONDS.
 DEPART_SECONDS = 1.0
@@ -121,3 +131,42 @@ def render_particles(background: np.ndarray, cloud: ParticleCloud, elapsed: floa
     under = canvas[ys, xs].astype(np.float32)
     canvas[ys, xs] = (under + (paint - under) * alpha[:, None]).astype(np.uint8)
     return canvas
+
+
+def salute_reference(face_landmarks, width: int, height: int):
+    """The forehead and brow band, temple to temple, as segments; plus the face width in pixels."""
+    base = face_reference(face_landmarks, width, height)
+    if base is None or len(face_landmarks) <= BROW_RIGHT:
+        return None
+    top, bridge, face_width = base
+    left, right = (np.array((face_landmarks[i].x * width, face_landmarks[i].y * height), np.float32)
+                   for i in (BROW_LEFT, BROW_RIGHT))
+    if not (np.isfinite(left).all() and np.isfinite(right).all()):
+        return None
+    segments = ((left, top), (top, right), (left, bridge), (bridge, right))
+    return segments, face_width
+
+
+def salute_pose(hand_landmarks, face, width: int, height: int) -> bool:
+    """A salute: four straight fingers held together, index edge or fingertips on the brow."""
+    if face is None or len(hand_landmarks) != 21:
+        return False
+    points = np.array([(p.x * width, p.y * height) for p in hand_landmarks], dtype=np.float32)
+    if not np.isfinite(points).all():
+        return False
+    lengths = []
+    for base in (5, 9, 13, 17):
+        finger = points[base : base + 4]
+        length = float(np.linalg.norm(np.diff(finger, axis=0), axis=1).sum())
+        # Mano tesa: tutte e quattro le dita dritte (Goku invece piega anulare e mignolo).
+        if length < 4.0 or np.linalg.norm(finger[3] - finger[0]) / length < 0.75:
+            return False
+        lengths.append(length)
+    # Dita unite: punte vicine tra loro, non una mano aperta a ventaglio.
+    tips = points[[8, 12, 16, 20]]
+    if np.linalg.norm(np.diff(tips, axis=0), axis=1).max() > float(np.mean(lengths[:3])) * 0.45:
+        return False
+    segments, face_width = face
+    contact = min(segment_distance(points[index], start, end)
+                  for index in (6, 7, 8, 12) for start, end in segments)
+    return contact < face_width * 0.3

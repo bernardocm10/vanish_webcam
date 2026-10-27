@@ -51,7 +51,7 @@ def face_reference(face_landmarks, width: int, height: int) -> tuple[np.ndarray,
     return points[FOREHEAD_TOP], points[NOSE_BRIDGE], face_width
 
 
-def _segment_distance(point: np.ndarray, start: np.ndarray, end: np.ndarray) -> float:
+def segment_distance(point: np.ndarray, start: np.ndarray, end: np.ndarray) -> float:
     direction = end - start
     t = float(np.clip(np.dot(point - start, direction) / max(float(np.dot(direction, direction)), 1e-6), 0.0, 1.0))
     return float(np.linalg.norm(point - (start + direction * t)))
@@ -80,7 +80,7 @@ def forehead_fingers_pose(hand_landmarks, face, width: int, height: int) -> bool
             return False
     top, bridge, face_width = face
     # Basta che punte o ultime falangi tocchino la fronte, non il punto esatto.
-    contact = min(_segment_distance(points[index], top, bridge) for index in (7, 8, 11, 12))
+    contact = min(segment_distance(points[index], top, bridge) for index in (7, 8, 11, 12))
     return contact < face_width * 0.35
 
 

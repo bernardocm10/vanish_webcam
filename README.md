@@ -41,7 +41,7 @@ Using it in a call? See [Calls, Teams and OBS](docs/calls.md).
 | **Normal** | V sign (index and middle finger) | You dissolve into the background |
 | **Naruto** | Palms pressed together, held for a moment | A cloud of smoke, and a log takes your place |
 | **Goku** | Two fingers on your forehead for 1 s | Speed lines and you teleport; repeat to come back |
-| **Partículas** | V sign | You break into fragments carried by the wind |
+| **Partículas** | Salute: flat hand on your brow, held for a moment | You break into fragments carried by the wind |
 
 Details for each one in [Effects](docs/effects.md).
 

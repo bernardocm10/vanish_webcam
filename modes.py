@@ -25,7 +25,8 @@ try:
     )
     from .normal_effect import VANISH_SECONDS, apply_dissolve, make_dissolve_fields
     from .particles_effect import (
-        EFFECT_SECONDS as PARTICLES_EFFECT_SECONDS, ParticleCloud, make_particles, render_particles,
+        EFFECT_SECONDS as PARTICLES_EFFECT_SECONDS, SALUTE_HOLD_SECONDS, ParticleCloud, make_particles,
+        render_particles,
     )
 except ImportError:
     from goku_effect import (
@@ -39,7 +40,8 @@ except ImportError:
     )
     from normal_effect import VANISH_SECONDS, apply_dissolve, make_dissolve_fields
     from particles_effect import (
-        EFFECT_SECONDS as PARTICLES_EFFECT_SECONDS, ParticleCloud, make_particles, render_particles,
+        EFFECT_SECONDS as PARTICLES_EFFECT_SECONDS, SALUTE_HOLD_SECONDS, ParticleCloud, make_particles,
+        render_particles,
     )
 
 
@@ -146,13 +148,31 @@ class NormalMode(VSignMode):
         return apply_dissolve(info.frame, info.background, self.mask, progress, *self.fields)
 
 
-class ParticlesMode(VSignMode):
+def half_resolution_rgb(frame: np.ndarray) -> np.ndarray:
+    height, width = frame.shape[:2]
+    # Viso e mani non richiedono il 720p: meta' risoluzione basta.
+    if width > 800:
+        frame = cv2.resize(frame, (width // 2, height // 2), interpolation=cv2.INTER_AREA)
+    return cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+
+
+class ParticlesMode(Mode):
     name = "particles"
-    instructions = "Faça um V: você se desfaz em fragmentos levados pelo vento."
+    detect_interval = 0.066
+    instructions = "Bata continência (mão reta, dedos unidos na testa) por um instante: você vira fragmentos no vento."
 
     def __init__(self, segment: Segment, sound=None):
         super().__init__(segment, sound)
         self.cloud: ParticleCloud | None = None
+        self.hold = HoldTracker(hold_seconds=SALUTE_HOLD_SECONDS)
+
+    def detection_image(self, frame: np.ndarray) -> np.ndarray:
+        return half_resolution_rgb(frame)
+
+    def on_detection(self, saluting, now: float) -> None:
+        # Dopo R bisogna abbassare la mano prima di poter sparire di nuovo.
+        if self.hold.update(bool(saluting), now) and self.phase == "ready":
+            self.vanish(now)
 
     def vanish(self, now: float) -> None:
         super().vanish(now)
@@ -190,7 +210,7 @@ class NarutoMode(Mode):
         self.mask: np.ndarray | None = None
         self.anchor: tuple[int, int, int] | None = None
         self.vanished_frame: np.ndarray | None = None
-        self.hold = HoldTracker(hold_seconds=NARUTO_HOLD_SECONDS, grace_seconds=0.2)
+        self.hold = HoldTracker(hold_seconds=NARUTO_HOLD_SECONDS, grace_seconds=0.3)
 
     def on_detection(self, joined, now: float) -> None:
         # Dopo R bisogna separare le mani prima di poter sparire di nuovo.
@@ -253,11 +273,7 @@ class GokuMode(Mode):
         self.region: np.ndarray | None = None
 
     def detection_image(self, frame: np.ndarray) -> np.ndarray:
-        height, width = frame.shape[:2]
-        # Viso e mani non richiedono il 720p: meta' risoluzione basta.
-        if width > 800:
-            frame = cv2.resize(frame, (width // 2, height // 2), interpolation=cv2.INTER_AREA)
-        return cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        return half_resolution_rgb(frame)
 
     def on_detection(self, posed, now: float) -> None:
         fired = self.hold.update(bool(posed), now)

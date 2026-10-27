@@ -188,6 +188,7 @@ class LiveSwitchTests(unittest.TestCase):
         recognizers = [Mock() for _ in range(3)]
         for recognizer in recognizers:
             recognizer.recognize_joined_hands.return_value = False
+            recognizer.recognize_pose.return_value = False
         displayed = []
         keys = list(keys or [0] * (frames - 1)) + [ord("q")]
         with ExitStack() as mocks:

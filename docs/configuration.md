@@ -45,6 +45,7 @@ To keep the original snapshot and never update it, use `--static-background`.
 - Keep your hand fully visible and well lit, facing the camera.
 - For Naruto, keep **both** hands in the frame, press the palms together (wrists touching too), fingers side by side and pointing up, and hold for a moment.
 - For Goku, hold the pose for a full second: breaking it restarts the countdown.
+- For Partículas, keep your face visible, and the four fingers straight and together on your brow.
 - Run with `--gesture-debug` to see in the terminal what the app detects. Nothing is drawn on the video.
 
 You can always press `V` to vanish without the gesture (except in Goku).

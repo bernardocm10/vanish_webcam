@@ -12,7 +12,7 @@ You dissolve into the background. The effect starts as soon as the gesture is re
 
 ## 2 · Naruto
 
-**Gesture:** press your palms together in front of the webcam, fingers pointing up and side by side (not interlaced), and hold for a moment (a quarter of a second). Keep both hands visible.
+**Gesture:** press your palms together in front of the webcam, fingers pointing up and side by side (not interlaced), and hold for a moment (a fifth of a second). Keep both hands visible.
 
 Open hands that are only close to each other do not count: the palms, wrists, and fingertips must touch. After pressing `R`, separate your hands before doing the gesture again.
 
@@ -30,11 +30,13 @@ Comic-style vertical speed lines run across your silhouette just before you tele
 - If you break the pose, the countdown starts over. The terminal shows the countdown.
 - **`V` and `R` do not work in this mode:** the gesture is the only way to vanish and reappear.
 - **Sound (optional):** add your own `assets/teleport.MP3` (not included) and it plays on both disappearance and reappearance.
-- Uses `face_landmarker.task` to find your forehead and `hand_landmarker.task` to track your fingers.
+- Uses `face_landmarker.task` to find your forehead and `hand_landmarker.task` to track your fingers. Partículas uses the same two models to find your brow and your hand.
 
 ## 4 · Partículas
 
-**Gesture:** the same V sign as Normal.
+**Gesture:** a salute. Put your hand flat on your brow or forehead, the four fingers straight and together, and hold for a moment (under half a second).
+
+Fingers spread apart, bent, or with the ring and pinky folded (the Goku pose) do not count. After pressing `R`, lower your hand before saluting again.
 
 Your silhouette breaks into small colored fragments that drift sideways as if carried by the wind. The effect lasts about 2.1 seconds. Your silhouette is captured once when the effect starts, which keeps the video smooth. Press `R` to reappear.
 

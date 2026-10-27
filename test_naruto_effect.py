@@ -31,9 +31,15 @@ class JoinedHandsTests(unittest.TestCase):
 
     def test_hands_passing_through_the_pose_do_not_trigger(self):
         mode = NarutoMode(segment=lambda frame, timestamp: None, sound=Mock())
-        for now, joined in ((1.0, True), (1.08, True), (1.16, False), (1.24, True), (1.32, False), (1.6, False)):
+        for now, joined in ((1.0, True), (1.08, True), (1.16, False), (1.24, False), (1.6, False), (1.68, True)):
             mode.on_detection(joined, now)
         self.assertEqual(mode.phase, "ready")
+
+    def test_one_missed_detection_does_not_cancel_the_gesture(self):
+        mode = NarutoMode(segment=lambda frame, timestamp: None, sound=Mock())
+        for now, joined in ((1.0, True), (1.08, False), (1.16, True), (1.24, True)):
+            mode.on_detection(joined, now)
+        self.assertEqual(mode.phase, "vanishing")
 
     def test_hands_must_separate_before_vanishing_again(self):
         mode = NarutoMode(segment=lambda frame, timestamp: None, sound=Mock())
@@ -81,6 +87,8 @@ class JoinedHandsTests(unittest.TestCase):
     def test_open_palms_side_by_side_before_the_gesture_are_not_joined(self):
         # Era il falso positivo: mani aperte vicine, ma non ancora unite.
         self.assertFalse(joined_hands_from_landmarks([self.hand(0.45), self.hand(0.55)], 640, 480))
+        # Quasi a contatto basta: il modello delle mani non e' preciso al pixel.
+        self.assertTrue(joined_hands_from_landmarks([self.hand(0.46), self.hand(0.54)], 640, 480))
 
     def test_slight_tilt_is_tolerated_but_open_or_crossed_hands_are_not(self):
         left, right = self.hand(0.47), self.hand(0.53)
