@@ -46,6 +46,8 @@ sudo modprobe v4l2loopback devices=1 video_nr=10 exclusive_caps=1 card_label="Va
 ./teams.sh --mode goku
 ```
 
+To get a **VanishCam** entry in the GNOME app menu, run `./install-launcher.sh` once. The entry runs `vanishcam-launcher.sh`, which asks for your password in a system dialog only when the virtual webcam is missing (after a reboot), then opens the mode menu.
+
 In Teams, choose **VanishCam** under **Settings → Devices → Camera**. Start the app before joining the call, and turn off Teams' own background effects.
 
 `teams.sh` also passes `--call-audio`, which creates a **VanishCam Mic** microphone with PipeWire: your real microphone plus the effect sounds, so the people in the call hear the Naruto and Goku sounds too. Choose it under **Settings → Devices → Microphone**. It exists only while the app runs (nothing is saved in the audio settings), so keep the app open during the call or switch Teams back to your normal microphone.
