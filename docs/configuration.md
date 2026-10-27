@@ -35,6 +35,10 @@ The app asks the webcam for 1280x720 in MJPG, the format that lets most USB webc
 
 If the wrong camera opens, try `--camera 1` (or 2, 3…). If the app says the webcam is unavailable, close other apps that are using it.
 
+### If the webcam disconnects
+
+If the webcam stops sending images for half a second (unplugged, or taken by another app), the app keeps running: it tries to reopen it every second, and meanwhile the preview and the call show a **Reconnecting the camera** card over a blurred, dimmed copy of the last image, so the call does not freeze on a still frame. This card is the only text the app ever puts on the video. As soon as the webcam is back the video resumes, with the same effect and background; if it comes back at another resolution, it is scaled to the one the call already receives. Press `Q` to give up and quit.
+
 ## Troubleshooting
 
 ### I leave a shadow or residue where I was standing
