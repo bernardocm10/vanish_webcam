@@ -48,6 +48,8 @@ sudo modprobe v4l2loopback devices=1 video_nr=10 exclusive_caps=1 card_label="Va
 
 In Teams, choose **VanishCam** under **Settings → Devices → Camera**. Start the app before joining the call, and turn off Teams' own background effects.
 
+`teams.sh` also passes `--call-audio`, which creates a **VanishCam Mic** microphone with PipeWire: your real microphone plus the effect sounds, so the people in the call hear the Naruto and Goku sounds too. Choose it under **Settings → Devices → Microphone**. It exists only while the app runs (nothing is saved in the audio settings), so keep the app open during the call or switch Teams back to your normal microphone.
+
 ## Virtual camera and OBS
 
 If [OBS Studio](https://obsproject.com/) is installed, the app automatically tries to open **OBS Virtual Camera**. The terminal shows the device name. Use `AVVIA_VIRTUAL.bat` to require a virtual camera. Select **OBS Virtual Camera** in the app that will receive the video. OBS's virtual camera must be stopped while this app is producing its output.

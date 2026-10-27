@@ -15,7 +15,7 @@ def arguments(**overrides):
     values = dict(
         camera=0, width=960, height=540, fps=30.0, fullscreen=False,
         no_mirror=True, virtual_camera=None, virtual_backend=None, virtual_device=None,
-        gesture_debug=False, mode="normal", static_background=False,
+        gesture_debug=False, mode="normal", static_background=False, call_audio=False,
     )
     values.update(overrides)
     return argparse.Namespace(**values)

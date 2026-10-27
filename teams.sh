@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Abre o VanishCam enviando o vídeo para a webcam virtual "VanishCam" (/dev/video10),
-# que você escolhe como câmera no Teams. Argumentos extras são repassados, ex.: ./teams.sh --mode naruto
+# que você escolhe como câmera no Teams, e cria o microfone "VanishCam Mic" (voz + sons dos efeitos).
+# Argumentos extras são repassados, ex.: ./teams.sh --mode naruto
 set -euo pipefail
 cd "$(dirname "$0")"
 
@@ -14,4 +15,4 @@ fi
 
 exec .venv/bin/python vanish_cam.py \
   --virtual-camera --virtual-backend v4l2loopback --virtual-device "$DEVICE" \
-  --no-mirror "$@"
+  --no-mirror --call-audio "$@"

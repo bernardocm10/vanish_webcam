@@ -5,6 +5,8 @@ from __future__ import annotations
 import argparse
 import os
 import platform
+import signal
+import subprocess
 import sys
 import threading
 import time
@@ -28,6 +30,7 @@ try:
         SOUND_NAME as GOKU_SOUND_NAME, face_reference, forehead_fingers_pose, sound_path,
     )
     from .modes import MODES, FrameInfo, Mode
+    from .call_audio import MIC_DESCRIPTION, CallSound, VirtualMic
 except ImportError:
     from naruto_effect import joined_hands_from_landmarks, load_log
     from vanish_sound import SOUND_PATH, VanishSound
@@ -35,6 +38,8 @@ except ImportError:
         SOUND_NAME as GOKU_SOUND_NAME, face_reference, forehead_fingers_pose, sound_path,
     )
     from modes import MODES, FrameInfo, Mode
+    from call_audio import MIC_DESCRIPTION, CallSound, VirtualMic
+
 
 APP_DIR = Path(__file__).resolve().parent
 MODEL_DIR = APP_DIR / "models"
@@ -115,6 +120,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--mode", choices=tuple(MODES),
         help="Salta il menu iniziale e avvia direttamente la modalità scelta",
+    )
+    parser.add_argument(
+        "--call-audio", action="store_true",
+        help="Crea il microfono virtuale 'VanishCam Mic' (voce + suoni degli effetti) per le videochiamate",
     )
     parser.add_argument(
         "--static-background", action="store_true",
@@ -821,21 +830,47 @@ def run() -> int:
     mode = args.mode or choose_mode()
     if mode is None:
         return 0
+    # Chiudere il terminale (SIGHUP) o un kill (SIGTERM) diventano un'uscita
+    # normale: webcam, finestre e microfono virtuale vengono rilasciati.
+    for name in ("SIGTERM", "SIGHUP"):
+        if hasattr(signal, name):
+            signal.signal(getattr(signal, name), stop_on_signal)
     with ExitStack() as resources:
         return run_camera(args, resources, mode)
 
 
-def open_sound(mode: str) -> VanishSound | None:
+def stop_on_signal(signum, frame) -> None:
+    raise KeyboardInterrupt
+
+
+def open_call_mic(args: argparse.Namespace, resources: ExitStack) -> VirtualMic | None:
+    if not args.call_audio:
+        return None
+    try:
+        mic = VirtualMic()
+    except (OSError, RuntimeError, subprocess.SubprocessError) as error:
+        # Il video conta piu' dell'audio: avvisa e continua senza microfono virtuale.
+        print(f"[Chiamata] Microfono virtuale non disponibile: {error}")
+        return None
+    resources.callback(mic.close)
+    print(f"[Chiamata] Microfono virtuale attivo: in Teams scegli '{MIC_DESCRIPTION}'.")
+    return mic
+
+
+def open_sound(mode: str, mic: VirtualMic | None = None):
     if mode == "naruto":
-        return VanishSound()
-    if mode == "goku":
+        path = SOUND_PATH
+    elif mode == "goku":
         path = sound_path()
         if path is None:
             print(f"[Goku] Nessun suono: aggiungi {GOKU_SOUND_NAME} in assets/ per attivarlo.")
             return None
         print(f"[Goku] Suono: {path.name}")
-        return VanishSound(path)
-    return None
+    else:
+        return None
+    sound = VanishSound(path) if mode == "goku" else VanishSound()
+    # Con il microfono virtuale l'effetto si sente anche nella chiamata.
+    return CallSound(sound, mic, path) if mic is not None else sound
 
 
 def run_camera(args: argparse.Namespace, resources: ExitStack, mode_name: str) -> int:
@@ -847,7 +882,7 @@ def run_camera(args: argparse.Namespace, resources: ExitStack, mode_name: str) -
     resources.callback(segmenter.close)
     detector = AsyncRecognizer(detection_function(mode_name, recognizer), recognizer.close)
     resources.callback(detector.close)
-    sound = open_sound(mode_name)
+    sound = open_sound(mode_name, open_call_mic(args, resources))
     if sound is not None:
         resources.callback(sound.close)
     segment = PersonSegmenter(segmenter)

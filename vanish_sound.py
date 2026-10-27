@@ -18,6 +18,8 @@ class VanishSound:
         self.path = path
 
         os.environ.setdefault("PYGAME_HIDE_SUPPORT_PROMPT", "1")
+        # Senza questo SDL intercetta SIGINT/SIGTERM: Ctrl+C non chiude l'app.
+        os.environ.setdefault("SDL_NO_SIGNAL_HANDLERS", "1")
         self.process = None
         self.ffplay = None
         try:
