@@ -1,8 +1,19 @@
 # VanishCam — webcam disappearance effects
 
+Vanish from your webcam with a hand gesture, live in Teams, OBS, or any video call: dissolve into thin air, swap yourself for a log in a cloud of smoke, teleport like Goku, or scatter into fragments in the wind. You can put any picture behind you and switch effect or background from a control panel without restarting.
+
+<p align="center"><img src="docs/panel.png" alt="VanishCam control panel" width="360"></p>
+
 Video is processed on your computer. It is neither recorded nor sent to a server. The preview window and virtual camera show only the video and effects, without overlaid menus, instructions, or text.
 
-For step-by-step instructions in English and Italian, see the [user guide](USER_GUIDE_EN_IT.md).
+## Features
+
+- **Four gesture-triggered effects:** Normal (dissolve), Naruto (log and smoke), Goku (teleport), and Partículas (fragments in the wind).
+- **Control panel:** switch effect and background while the camera keeps running, with no restart and no new calibration.
+- **Custom backgrounds:** replace your room with any picture from a built-in gallery. When you vanish, the picture is what remains.
+- **Remembers your choices:** the next launch starts with the last effect and background.
+- **Works in calls:** virtual webcam for Teams, Zoom, Meet, and OBS, plus an optional virtual microphone so the people in the call hear the effect sounds (Linux).
+- **Background that adapts:** it follows lighting and exposure changes, so you do not leave a shadow behind.
 
 ## ☕ Buy me a coffee
 
@@ -12,40 +23,61 @@ If you like this project and want to support it, you can buy me a coffee through
 
 [Download VanishCam.exe]( https://nicoaauriemma.vercel.app/shop ) and double-click it to run the app. You do not need to install Python.
 
-The published EXE may predate the Particles and Goku modes. To use them now, run the local scripts or rebuild the EXE from these sources.
+The published EXE may predate the Particles and Goku modes, custom backgrounds, and the control panel. To use them now, run the local scripts or rebuild the EXE from these sources (`BUILD_WINDOWS.bat`).
 
 ## Getting started
 
-1. Double-click `AVVIA_LOCALE.bat`. Two windows open: the video preview and the **VanishCam** control panel.
-2. Step out of the camera frame for 4 seconds while the background is captured. The panel tells you when you can step back in.
-3. In the panel, pick an effect (**Normal**, **Naruto**, **Goku**, or **Partículas**) and a background. You can switch either at any time without closing the app.
+**Windows:** double-click `AVVIA_LOCALE.bat`. The first run creates a Python environment and installs the dependencies, which needs an internet connection once.
 
-### Control panel
+**Linux:** create the environment once, then start the app:
+
+```bash
+python3 -m venv .venv
+.venv/bin/pip install -r requirements.txt
+.venv/bin/python vanish_cam.py
+```
+
+For Microsoft Teams on Linux and a launcher in the GNOME app menu, see [Linux and Microsoft Teams](#linux-and-microsoft-teams).
+
+Two windows open: the video preview and the **VanishCam** control panel.
+
+1. Step out of the camera frame for 4 seconds while your real background is captured. The panel tells you when you can step back in. If you choose a picture as your background, this step is skipped.
+2. Pick an effect and a background in the panel.
+3. Make the effect's gesture and vanish.
+
+## Control panel
 
 The panel sits next to the video, so the preview and the virtual camera still show only the video.
 
 - **Efeito:** click a card, or press `1`–`4`, to switch effect. The camera, the virtual webcam, the call microphone, and the background stay as they are. There is no new calibration.
 - **Fundo:** **Fundo real** is your room; the other tiles are your images. **+ Adicionar** opens the system file picker and copies the image into the gallery (up to 7, oldest removed first). Hover over an image and click **×** to remove it from the gallery (the original file is never touched). Going back to **Fundo real** reuses the background already captured; it only asks you to step out of the frame if it was never captured in this session.
 - **Controles:** **Sumir** (`V`), **Reaparecer** (`R`), **Novo fundo** (`SPACE`, only with the real background), and **Tela cheia** (`F`). Sumir and Reaparecer are disabled in Goku mode.
-- The line at the top shows what is happening: capturing the background, ready, vanishing, or invisible.
+- The status at the top shows what is happening: capturing the background, ready, vanishing, or invisible.
 
 The app remembers the last effect and background and starts with them next time. They are stored in `~/.config/vanishcam/` on Linux and `%APPDATA%\VanishCam\` on Windows. Closing the panel or pressing `Q` quits the app.
 
-**Normal Vanish:** Raise your index and middle fingers in a V sign. The dissolve starts as soon as the gesture is recognized and lasts about 3.6 seconds.
+## Effects
 
-**Particles:** Make the same V sign as in Normal Vanish. Your silhouette breaks into small colored fragments that drift sideways as if carried by the wind. The effect lasts about 2.1 seconds. It captures your silhouette once when the effect starts to keep the video smooth.
+**Normal:** Raise your index and middle fingers in a V sign. The dissolve starts as soon as the gesture is recognized and lasts about 3.6 seconds.
 
-**Goku:** Hold your index and middle fingers straight and together against your forehead for 1 second. Animated vertical comic-style lines run across your silhouette just before you teleport away and linger briefly afterward. To reappear, lower your hand, then repeat the gesture for another 1 second. The return uses the reverse effect. If you break the pose, the countdown starts over. If you add an `assets/teleport.MP3` (not included), it plays on both disappearance and reappearance. The terminal shows the countdown for each gesture. The `V` and `R` keys are disabled in this mode: the gesture is the only way to disappear and reappear. No text is overlaid on the video.
+**Naruto:** Bring your palms together in front of the webcam, with your fingers side by side rather than interlaced. Keep both hands visible. As soon as the gesture is recognized, you vanish in a cloud of smoke and a wooden log appears, falls, and remains visible until you press `R`. No microphone is needed. Naruto mode uses `hand_landmarker.task` to track both hands. `assets/vanish.MP3` plays through your computer speakers when the disappearance starts, including when triggered with `V`. You can trigger it again after pressing `R`.
 
-**Naruto Vanish:** Bring your palms together in front of the webcam, with your fingers side by side rather than interlaced. Keep both hands visible. As soon as the gesture is recognized, you vanish in a cloud of smoke and a wooden log appears, falls, and remains visible until you press `R`. No microphone is needed. Naruto mode uses `hand_landmarker.task` to track both hands. `assets/vanish.MP3` plays through your computer speakers when the disappearance starts, including when triggered with `V`. You can trigger it again after pressing `R`.
+**Goku:** Hold your index and middle fingers straight and together against your forehead for 1 second. Animated vertical comic-style lines run across your silhouette just before you teleport away and linger briefly afterward. To reappear, lower your hand, then repeat the gesture for another 1 second. The return uses the reverse effect. If you break the pose, the countdown starts over. If you add an `assets/teleport.MP3` (not included), it plays on both disappearance and reappearance. The terminal shows the countdown for each gesture. The `V` and `R` keys are disabled in this mode: the gesture is the only way to disappear and reappear.
 
-To start with a specific effect regardless of the last one used:
+**Partículas:** Make the same V sign as in Normal. Your silhouette breaks into small colored fragments that drift sideways as if carried by the wind. The effect lasts about 2.1 seconds. It captures your silhouette once when the effect starts to keep the video smooth.
+
+## Custom background image
+
+The easiest way is the **Fundo** section of the control panel. The image fills the whole frame without being stretched (the excess is cropped from the center), and it is not mirrored. You appear in front of it, and when you vanish the image is what remains. Turn off the call app's own background effects so they do not stack with this one.
+
+To start with a specific image from the command line, pass `--background-image` with a JPG or PNG file:
 
 ```powershell
-local_app\AVVIA_LOCALE.bat --mode naruto
-local_app\AVVIA_LOCALE.bat --mode normal
-local_app\AVVIA_LOCALE.bat --mode particles
-local_app\AVVIA_LOCALE.bat --mode goku
+local_app\AVVIA_LOCALE.bat --mode normal --background-image C:\Users\me\Pictures\beach.jpg
+```
+
+```bash
+./teams.sh --mode goku --background-image ~/Pictures/beach.jpg
 ```
 
 ## Linux and Microsoft Teams
@@ -54,10 +86,10 @@ Teams on Linux runs in the browser (teams.microsoft.com). Create a virtual webca
 
 ```bash
 sudo modprobe v4l2loopback devices=1 video_nr=10 exclusive_caps=1 card_label="VanishCam"
-./teams.sh --mode goku
+./teams.sh
 ```
 
-To get a **VanishCam** entry in the GNOME app menu, run `./install-launcher.sh` once. The entry runs `vanishcam-launcher.sh`, which asks for your password in a system dialog only when the virtual webcam is missing (after a reboot). It then opens the app with its control panel. The **+ Adicionar** button in the panel uses `zenity` (preinstalled on GNOME) or `kdialog` for the file picker.
+To get a **VanishCam** entry in the GNOME app menu, run `./install-launcher.sh` once. The entry runs `vanishcam-launcher.sh`, which asks for your password in a system dialog only when the virtual webcam is missing (after a reboot), then opens the app with its control panel. The **+ Adicionar** button in the panel uses `zenity` (preinstalled on GNOME) or `kdialog` for the file picker.
 
 In Teams, choose **VanishCam** under **Settings → Devices → Camera**. Start the app before joining the call, and turn off Teams' own background effects.
 
@@ -75,38 +107,41 @@ local_app\AVVIA_VIRTUAL.bat --virtual-backend unitycapture
 
 OBS has only one virtual camera. Do not use it as both an OBS input and output at the same time. See the [pyvirtualcam documentation](https://github.com/letmaik/pyvirtualcam#supported-virtual-cameras).
 
-## Custom background image
-
-The easiest way is the **Fundo** section of the control panel. To start with a specific image from the command line instead, pass `--background-image` with a JPG or PNG file:
-
-```powershell
-local_app\AVVIA_LOCALE.bat --mode normal --background-image C:\Users\me\Pictures\beach.jpg
-```
-
-```bash
-./teams.sh --mode goku --background-image ~/Pictures/beach.jpg
-```
-
-The image fills the whole frame without being stretched (the excess is cropped from the center), and it is not mirrored. You appear in front of it, and when you vanish the image is what remains. There is no 4-second calibration, and the `SPACE` key does nothing while an image is selected. Turn off Teams' own background effects so they do not stack with this one.
-
 ## Controls
 
 The keys work in both the preview and the panel:
 
-- `1`–`4`: switch effect (Normal, Naruto, Goku, Partículas).
-- `SPACE`: capture a new background.
-- `R`: make the person reappear.
-- `V`: manually start the selected mode's effect.
-- `F`: toggle fullscreen.
-- `Q` or `ESC`: quit and release the cameras.
+| Key | Action |
+| --- | --- |
+| `1`–`4` | Switch effect (Normal, Naruto, Goku, Partículas) |
+| `V` | Vanish now, without the gesture |
+| `R` | Reappear |
+| `SPACE` | Capture a new real background |
+| `F` | Toggle fullscreen |
+| `Q` or `ESC` | Quit and release the cameras |
 
 The `V` and `R` keys are disabled in Goku mode.
 
-The default resolution is 1280x720 (16:9), requested as MJPG so USB webcams can deliver it at full frame rate; if the webcam does not support it, the app uses the resolution the webcam returns and keeps its aspect ratio. You can change the camera, resolution, and maximum virtual-output FPS:
+## Command-line options
 
-```powershell
-local_app\AVVIA_LOCALE.bat --camera 1 --width 1280 --height 720 --fps 30
-```
+| Option | Description |
+| --- | --- |
+| `--mode normal\|naruto\|goku\|particles` | Effect to start with (default: the last one used) |
+| `--background-image FILE` | Picture to start with as the background (default: the last one used) |
+| `--camera N` | Webcam index (default: 0) |
+| `--width`, `--height` | Requested resolution (default: 1280x720) |
+| `--fps N` | Maximum virtual-output FPS (default: 30) |
+| `--virtual-camera`, `--no-virtual-camera` | Require or disable the virtual webcam (default: use it if available) |
+| `--virtual-backend`, `--virtual-device` | Pick the virtual webcam driver and device |
+| `--call-audio` | Create the **VanishCam Mic** virtual microphone (Linux, PipeWire) |
+| `--no-mirror` | Do not mirror the video |
+| `--fullscreen` | Start in fullscreen |
+| `--static-background` | Keep the calibrated background instead of updating it |
+| `--gesture-debug` | Print gesture recognition diagnostics in the terminal |
+
+The default resolution is requested as MJPG so USB webcams can deliver it at full frame rate; if the webcam does not support it, the app uses the resolution the webcam returns and keeps its aspect ratio.
+
+## How the real background stays clean
 
 After calibration the background keeps updating wherever you are clearly not in the frame, so it follows lighting changes even while you are invisible. Changes in the webcam's automatic exposure, for example when you stand in front of a bright window, are also applied to the area behind you, so you do not leave a shadow where you were standing. If you still see a residue, turn off auto exposure in the webcam settings and press `SPACE` to capture a new background. Pass `--static-background` to keep the original snapshot instead.
 
@@ -126,4 +161,8 @@ Run the tests from the project folder:
 .venv/bin/python -m unittest
 ```
 
-Each effect is a class in `modes.py` (`NormalMode`, `NarutoMode`, `ParticlesMode`, `GokuMode`): it turns detection results into phases (`ready`, `vanishing`, `vanished`, and `appearing` for Goku) and draws each frame. `vanish_cam.py` only runs the camera, calibration, background updates, keys and outputs; gesture detection runs in a background thread (`AsyncRecognizer`). To add an effect, subclass `Mode`, register it in `MODES` and add its detector in `create_tasks` and `detection_function`.
+- `vanish_cam.py` runs the camera, calibration, background updates, keys, and outputs. Gesture detection runs in a background thread (`AsyncRecognizer`). Everything that depends on the effect (recognizer, sound, and `Mode`) lives in `EffectRuntime`, which is the only part replaced when you switch effect.
+- `modes.py` has one class per effect (`NormalMode`, `NarutoMode`, `GokuMode`, `ParticlesMode`). Each turns detection results into phases (`ready`, `vanishing`, `vanished`, and `appearing` for Goku) and draws each frame.
+- `control_panel.py` draws the panel with Pillow and turns clicks into actions. `user_data.py` stores preferences and the background gallery.
+
+To add an effect, subclass `Mode`, register it in `MODES`, add its detector in `create_recognizer` and `detection_function`, and add its card to `MODE_CARDS`.
