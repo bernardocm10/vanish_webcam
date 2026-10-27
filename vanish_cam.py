@@ -24,7 +24,7 @@ from mediapipe.tasks import python
 from mediapipe.tasks.python import vision
 
 try:
-    from .naruto_effect import joined_hands_from_landmarks, load_log
+    from .naruto_effect import hand_seal_from_landmarks, load_log
     from .vanish_sound import SOUND_PATH, VanishSound
     from .goku_effect import (
         SOUND_NAME as GOKU_SOUND_NAME, face_reference, forehead_fingers_pose, sound_path,
@@ -38,7 +38,7 @@ try:
     from .i18n import LANGUAGES, set_language, t
     from .user_data import Settings, UserData
 except ImportError:
-    from naruto_effect import joined_hands_from_landmarks, load_log
+    from naruto_effect import hand_seal_from_landmarks, load_log
     from vanish_sound import SOUND_PATH, VanishSound
     from goku_effect import (
         SOUND_NAME as GOKU_SOUND_NAME, face_reference, forehead_fingers_pose, sound_path,
@@ -700,11 +700,14 @@ class MultiViewHandLandmarker:
         self.next_retry_ms = 0
         self.last_hand_count = 0
         self.retry_cursor = 0
+        # Which seal matched last ("palms" or "clasped"), shown by --gesture-debug.
+        self.last_seal: str | None = None
 
     def recognize_joined_hands(self, image: mp.Image, timestamp_ms: int) -> bool:
         result = self.primary.detect_for_video(image, timestamp_ms)
         self.last_hand_count = len(result.hand_landmarks)
-        if joined_hands_from_landmarks(result.hand_landmarks, image.width, image.height):
+        self.last_seal = hand_seal_from_landmarks(result.hand_landmarks, image.width, image.height)
+        if self.last_seal is not None:
             self.preferred_view = None
             return True
         if timestamp_ms < self.next_retry_ms:
@@ -736,7 +739,8 @@ class MultiViewHandLandmarker:
             )
             result = self.alternate.detect(rotated)
             self.last_hand_count = max(self.last_hand_count, len(result.hand_landmarks))
-            if joined_hands_from_landmarks(result.hand_landmarks, rotated.width, rotated.height):
+            self.last_seal = hand_seal_from_landmarks(result.hand_landmarks, rotated.width, rotated.height)
+            if self.last_seal is not None:
                 self.preferred_view = (crop, rotation)
                 self.next_retry_ms = timestamp_ms + 90
                 return True
@@ -899,7 +903,7 @@ def detector_status(recognizer, result) -> str:
     details = [f"result={result}"]
     for label, attribute in (
         ("crop", "preferred_crop"), ("rotation", "preferred_rotation"),
-        ("view", "preferred_view"), ("hands", "last_hand_count"), ("face", "face_visible"),
+        ("view", "preferred_view"), ("hands", "last_hand_count"), ("seal", "last_seal"), ("face", "face_visible"),
     ):
         if hasattr(recognizer, attribute):
             details.append(f"{label}={getattr(recognizer, attribute)}")
