@@ -21,7 +21,7 @@ class JoinedHandsTests(unittest.TestCase):
         mode.on_detection(False, 1.0)
         mode.on_detection(True, 1.1)
         mode.on_detection(True, 1.2)
-        self.assertEqual(mode.phase, "ready")  # Mani appena giunte: ancora niente.
+        self.assertEqual(mode.phase, "ready")  # Hands just joined: nothing yet.
         mode.on_detection(True, 1.35)
         self.assertEqual(mode.phase, "vanishing")
         self.assertEqual(mode.started, 1.35)
@@ -85,22 +85,22 @@ class JoinedHandsTests(unittest.TestCase):
         self.assertFalse(joined_hands_from_landmarks([left, self.hand(0.53, upward=False)], 640, 480))
 
     def test_open_palms_side_by_side_before_the_gesture_are_not_joined(self):
-        # Era il falso positivo: mani aperte vicine, ma non ancora unite.
+        # This was the false positive: open hands close together, but not joined yet.
         self.assertFalse(joined_hands_from_landmarks([self.hand(0.45), self.hand(0.55)], 640, 480))
-        # Quasi a contatto basta: il modello delle mani non e' preciso al pixel.
+        # Almost touching is enough: the hand model is not pixel accurate.
         self.assertTrue(joined_hands_from_landmarks([self.hand(0.46), self.hand(0.54)], 640, 480))
 
     def test_slight_tilt_is_tolerated_but_open_or_crossed_hands_are_not(self):
         left, right = self.hand(0.47), self.hand(0.53)
-        # Punte verso l'interno di 15 gradi: palme ancora giunte.
+        # Tips 15 degrees inwards: palms still joined.
         self.assertTrue(joined_hands_from_landmarks([self.tilted(left, 15), self.tilted(right, -15)], 640, 480))
-        # Mani aperte a V, subito prima di chiuderle.
+        # Hands open in a V, right before closing them.
         self.assertFalse(joined_hands_from_landmarks([self.tilted(left, -15), self.tilted(right, 15)], 640, 480))
-        # Dita incrociate: non e' il sigillo.
+        # Fingers crossed: not the seal.
         self.assertFalse(joined_hands_from_landmarks([self.tilted(left, 30), self.tilted(right, -30)], 640, 480))
 
     def test_wrists_apart_are_not_joined(self):
-        # Punte vicine ma polsi lontani: una "V" con le braccia, non le palme giunte.
+        # Tips close but wrists apart: a "V" with the arms, not joined palms.
         left = self.tilted(self.hand(0.47), 20, pivot=(0.47 * 640, 0.34 * 480))
         right = self.tilted(self.hand(0.53), -20, pivot=(0.53 * 640, 0.34 * 480))
         self.assertFalse(joined_hands_from_landmarks([left, right], 640, 480))
@@ -188,7 +188,7 @@ class NarutoVideoLoopTests(unittest.TestCase):
     def test_effect_is_sent_to_preview_and_virtual_camera(self):
         frames = [np.full((80, 120, 3), v, np.uint8) for v in (10, 40, 80, 120, 160, 200)]
         capture = Mock()
-        # Mani giunte da 4.3: l'effetto parte solo dopo la tenuta, a 4.6.
+        # Hands joined from 4.3: the effect starts only after the hold, at 4.6.
         read, clock = video_clock(frames, (0, 4.1, 4.3, 4.6, 4.8, 6.3))
         capture.read.side_effect = read
         segmenter, recognizer = Mock(), Mock()
@@ -217,11 +217,11 @@ class NarutoVideoLoopTests(unittest.TestCase):
         self.assertEqual(len(preview), 6)
         for sent, shown in zip(virtual.send.call_args_list, preview):
             np.testing.assert_array_equal(sent.args[0], shown)
-        np.testing.assert_array_equal(preview[2], frames[2])  # Ancora in tenuta.
+        np.testing.assert_array_equal(preview[2], frames[2])  # Still holding.
         self.assertTrue(np.any(preview[3] != frames[3]))
         self.assertTrue(np.any(preview[4] != frames[4]))
-        self.assertTrue(np.any(preview[5] != frames[1]))  # Tronco persistente.
-        self.assertEqual(recognizer.recognize_joined_hands.call_count, 2)  # Inizio e conferma della tenuta.
+        self.assertTrue(np.any(preview[5] != frames[1]))  # The log stays.
+        self.assertEqual(recognizer.recognize_joined_hands.call_count, 2)  # Start and confirmation of the hold.
         sound.play.assert_called_once()
         sound.close.assert_called_once()
 

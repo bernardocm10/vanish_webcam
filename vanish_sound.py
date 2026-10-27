@@ -7,6 +7,10 @@ import shutil
 import subprocess
 from pathlib import Path
 
+try:
+    from .i18n import t
+except ImportError:
+    from i18n import t
 
 SOUND_PATH = Path(__file__).resolve().parent / "assets" / "vanish.MP3"
 
@@ -14,11 +18,11 @@ SOUND_PATH = Path(__file__).resolve().parent / "assets" / "vanish.MP3"
 class VanishSound:
     def __init__(self, path: Path = SOUND_PATH):
         if not path.is_file():
-            raise RuntimeError(f"Áudio não encontrado: {path}")
+            raise RuntimeError(t("sound.missing", path=path))
         self.path = path
 
         os.environ.setdefault("PYGAME_HIDE_SUPPORT_PROMPT", "1")
-        # Senza questo SDL intercetta SIGINT/SIGTERM: Ctrl+C non chiude l'app.
+        # Without this SDL catches SIGINT/SIGTERM: Ctrl+C would not close the app.
         os.environ.setdefault("SDL_NO_SIGNAL_HANDLERS", "1")
         self.process = None
         self.ffplay = None
@@ -27,7 +31,7 @@ class VanishSound:
         except ImportError:
             self.ffplay = shutil.which("ffplay")
             if self.ffplay is None:
-                raise RuntimeError("Para tocar os sons do efeito instale o pygame ou o ffplay.")
+                raise RuntimeError(t("sound.no_player"))
             return
 
         self.mixer = mixer
@@ -39,7 +43,7 @@ class VanishSound:
         except Exception as error:
             if self.owns_mixer:
                 mixer.quit()
-            raise RuntimeError(f"Não foi possível abrir o áudio: {error}") from error
+            raise RuntimeError(t("sound.open_failed", error=error)) from error
 
     def play(self) -> None:
         if self.ffplay is not None:
@@ -54,11 +58,11 @@ class VanishSound:
                     creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
                 )
             except OSError as error:
-                raise RuntimeError(f"Não foi possível tocar o áudio: {error}") from error
+                raise RuntimeError(t("sound.play_failed", error=error)) from error
             return
         self.sound.stop()
         if self.sound.play() is None:
-            raise RuntimeError("Não foi possível tocar o áudio: nenhum canal livre.")
+            raise RuntimeError(t("sound.no_channel"))
 
     def close(self) -> None:
         if self.ffplay is not None:

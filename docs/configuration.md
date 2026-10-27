@@ -4,7 +4,7 @@
 
 ## Command-line options
 
-Pass them after the start command, for example `.venv/bin/python vanish_cam.py --camera 1` or `AVVIA_LOCALE.bat --camera 1`.
+Pass them after the start command, for example `.venv/bin/python vanish_cam.py --camera 1` or `start.bat --camera 1`.
 
 | Option | What it does |
 | --- | --- |
@@ -20,6 +20,14 @@ Pass them after the start command, for example `.venv/bin/python vanish_cam.py -
 | `--fullscreen` | Start in fullscreen |
 | `--static-background` | Keep the captured background as it is instead of updating it |
 | `--gesture-debug` | Print gesture recognition details in the terminal |
+| `--lang en\|pt` | Interface language (default: the system language) |
+
+## Language
+
+The panel, the terminal messages, the errors, and `--help` are in English or Brazilian Portuguese. The app follows the system language and uses English for any other language. To choose one yourself:
+
+- `--lang pt` or `--lang en` for one launch, or
+- the `VANISHCAM_LANG` environment variable (`pt` or `en`), which also applies to the start scripts.
 
 ## Camera and resolution
 
@@ -36,7 +44,7 @@ The captured room keeps updating wherever you are clearly not in the frame, so i
 If you still see a residue:
 
 1. Turn off auto exposure in the webcam settings.
-2. Press `SPACE` (**NOVO FUNDO**) and step out of the frame to capture the room again.
+2. Press `SPACE` (**NEW BACKGROUND**) and step out of the frame to capture the room again.
 
 To keep the original snapshot and never update it, use `--static-background`.
 
@@ -45,7 +53,7 @@ To keep the original snapshot and never update it, use `--static-background`.
 - Keep your hand fully visible and well lit, facing the camera.
 - For Naruto, keep **both** hands in the frame, press the palms together (wrists touching too), fingers side by side and pointing up, and hold for a moment.
 - For Goku, hold the pose for a full second: breaking it restarts the countdown.
-- For Partículas, keep your face visible, and the four fingers straight and together on your brow.
+- For Particles, keep your face visible, and the four fingers straight and together on your brow.
 - Run with `--gesture-debug` to see in the terminal what the app detects. Nothing is drawn on the video.
 
 You can always press `V` to vanish without the gesture (except in Goku).

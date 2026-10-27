@@ -6,7 +6,8 @@ from unittest.mock import Mock, patch
 
 import call_audio
 import vanish_cam as app
-from call_audio import MIC_SOURCE, MIX_SINK, CallSound, VirtualMic, default_source
+from call_audio import MIC_DESCRIPTION, MIC_SOURCE, MIX_SINK, CallSound, VirtualMic, default_source
+from i18n import t
 from test_video_output import arguments
 
 
@@ -23,7 +24,7 @@ class VirtualMicTests(unittest.TestCase):
         self.popen = self.mocks.enter_context(
             patch.object(call_audio.subprocess, "Popen", side_effect=lambda *a, **k: fake_process())
         )
-        # La prima verifica (istanza gia' attiva?) dice no, poi il nodo compare.
+        # The first check (instance already running?) says no, then the node appears.
         self.exists = self.mocks.enter_context(
             patch.object(call_audio, "node_exists", side_effect=[False, True])
         )
@@ -47,13 +48,14 @@ class VirtualMicTests(unittest.TestCase):
             process.terminate.assert_called_once()
 
     def test_refuses_to_loop_the_virtual_mic_into_itself(self):
-        with self.assertRaisesRegex(RuntimeError, "já é"):
+        with self.assertRaises(RuntimeError) as raised:
             VirtualMic(source=MIC_SOURCE)
+        self.assertEqual(str(raised.exception), t("mic.default_is_virtual", name=MIC_DESCRIPTION))
         self.popen.assert_not_called()
 
     def test_missing_pipewire_tools(self):
         with patch.object(call_audio.shutil, "which", return_value=None):
-            with self.assertRaisesRegex(RuntimeError, "PipeWire indisponível"):
+            with self.assertRaisesRegex(RuntimeError, "pw-loopback"):
                 VirtualMic(source="alsa_input.headset")
 
     def test_default_source_reads_wpctl(self):
@@ -73,10 +75,10 @@ class CallSoundTests(unittest.TestCase):
         local.close.assert_called_once()
 
     def test_unavailable_mic_never_stops_the_video(self):
-        with ExitStack() as resources, patch.object(app, "VirtualMic", side_effect=RuntimeError("sem PipeWire")), \
+        with ExitStack() as resources, patch.object(app, "VirtualMic", side_effect=RuntimeError("no PipeWire")), \
                 patch("builtins.print") as printed:
             self.assertIsNone(app.open_call_mic(arguments(call_audio=True), resources))
-        self.assertIn("sem PipeWire", printed.call_args.args[0])
+        self.assertIn("no PipeWire", printed.call_args.args[0])
 
     def test_naruto_sound_is_shared_with_the_call(self):
         mic = Mock()

@@ -18,27 +18,29 @@ import numpy as np
 from PIL import Image, ImageDraw, ImageFont, ImageOps
 
 try:
+    from .i18n import t
     from .user_data import pick_image_file
 except ImportError:
+    from i18n import t
     from user_data import pick_image_file
 
 PANEL_TITLE = "VanishCam"
 FONT_DIR = Path(__file__).resolve().parent / "assets" / "fonts"
 WIDTH = 440
 PAD = 20
-# Disegna al doppio della risoluzione e riduce: bordi e testo restano lisci.
+# Draw at twice the resolution and scale down: edges and text stay smooth.
 SCALE = 2
 GALLERY_COLUMNS = 3
 TILE_GAP = 10
 TILE_HEIGHT = 71
-CAPTION = 18  # Didascalia sotto ogni miniatura.
+CAPTION = 18  # Caption under each thumbnail.
 ROW_HEIGHT = 52
 KEY_HEIGHT = 46
 BAR = 40
 ROWS_TOP = 112
-SECTION = 38  # Dal contenuto precedente al successivo, titolo di sezione compreso.
+SECTION = 38  # From the previous content to the next, section title included.
 
-# Pannello di controllo da regia: frontale chiaro, inchiostro nero, un solo colore di segnale.
+# Broadcast control surface: light faceplate, black ink, a single signal color.
 FACE = (232, 229, 222)
 KEY = (244, 242, 237)
 KEY_EDGE = (168, 163, 152)
@@ -55,17 +57,19 @@ AMBER = (196, 122, 14)
 @dataclass(frozen=True)
 class ModeCard:
     key: str
-    title: str
-    hint: str
+
+    # Read when drawn, so they follow the language chosen at startup.
+    @property
+    def title(self) -> str:
+        return t(f"mode.{self.key}.title")
+
+    @property
+    def hint(self) -> str:
+        return t(f"mode.{self.key}.hint")
 
 
-MODE_CARDS = (
-    ModeCard("normal", "Normal", "sinal de V — dissolução"),
-    ModeCard("naruto", "Naruto", "palmas juntas — tronco e fumaça"),
-    ModeCard("goku", "Goku", "dois dedos na testa, 1 s — teletransporte"),
-    ModeCard("particles", "Partículas", "continência na testa — fragmentos no vento"),
-)
-# Quando l'effetto e' in corso la spia diventa rossa, come il tally di una telecamera in onda.
+MODE_CARDS = tuple(ModeCard(key) for key in ("normal", "naruto", "goku", "particles"))
+# While the effect runs the lamp turns red, like the tally of a camera on air.
 ACCENTS = {card.key: TALLY for card in MODE_CARDS}
 ADD_TILE = "add"
 
@@ -96,11 +100,11 @@ class Region:
 
 
 def hit(regions: list[Region], x: float, y: float) -> Region | None:
-    # Le regioni piccole (la x di rimozione) sono registrate prima della miniatura.
+    # Small regions (the remove x) are registered before their thumbnail.
     return next((region for region in regions if region.contains(x, y)), None)
 
 
-# IBM Plex (OFL) e' incluso: stesso aspetto su Windows e Linux. I font di sistema sono il ripiego.
+# IBM Plex (OFL) is bundled: same look on Windows and Linux. System fonts are the fallback.
 FONTS = {
     "mono": ("IBMPlexMono-Regular.ttf", "DejaVuSansMono.ttf", "consola.ttf", "Menlo.ttc"),
     "mono-bold": ("IBMPlexMono-SemiBold.ttf", "DejaVuSansMono-Bold.ttf", "consolab.ttf", "Menlo.ttc"),
@@ -200,7 +204,7 @@ class PanelRenderer:
             if not spacing:
                 draw.text((xy[0] * SCALE, xy[1] * SCALE), value, fill=color, font=face, anchor=anchor)
                 return
-            # Spaziatura manuale: Pillow non la gestisce. Si allinea sulla larghezza totale.
+            # Manual letter spacing: Pillow does not support it. Aligned on the total width.
             advances = [face.getlength(char) / SCALE + spacing for char in value]
             total = sum(advances) - spacing
             x = xy[0] - {"l": 0, "m": total / 2, "r": total}[anchor[0]]
@@ -230,7 +234,7 @@ class PanelRenderer:
                 length = min(x1 - ax, y1 - ay)
                 line(ax, ay, ax + length, ay + length, color)
 
-        # Barra superiore e riga di stato.
+        # Top bar and status line.
         rect((0, 0, WIDTH, BAR), fill=INK)
         text((PAD, BAR / 2), "VANISHCAM", 12.5, FACE, "mono-bold", "lm", spacing=2.2)
         lamp = (WIDTH - PAD - 12, BAR / 2 - 6, WIDTH - PAD, BAR / 2 + 6)
@@ -240,7 +244,7 @@ class PanelRenderer:
         text((PAD + 16, 60), fit(view.status.upper(), 11.5, "mono-bold", WIDTH - 2 * PAD - 16), 11.5, INK, "mono-bold", "lm")
         line(0, 78.5, WIDTH, 78.5, INK)
 
-        section(ROWS_TOP - 16, "A", "EFEITO")
+        section(ROWS_TOP - 16, "A", t("panel.effect"))
         y = ROWS_TOP
         line(PAD, y, WIDTH - PAD, y, RULE)
         for number, card in enumerate(MODE_CARDS, start=1):
@@ -258,14 +262,14 @@ class PanelRenderer:
             text((PAD + 50, y + 33), card.hint, 10.5, soft)
             if selected:
                 rect((WIDTH - PAD - 60, y + 22, WIDTH - PAD - 52, y + 30), fill=TALLY)
-                text((WIDTH - PAD - 12, y + ROW_HEIGHT / 2), "ATIVO", 10, FACE, "mono-bold", "rm", spacing=1)
+                text((WIDTH - PAD - 12, y + ROW_HEIGHT / 2), t("panel.active"), 10, FACE, "mono-bold", "rm", spacing=1)
             else:
                 regions.append(Region(row, ("mode", card.key)))
             y += ROW_HEIGHT
             line(PAD, y, WIDTH - PAD, y, RULE)
 
         y = rows_bottom() + SECTION
-        section(y - 16, "B", "FUNDO")
+        section(y - 16, "B", t("panel.background"))
         width = self.tile_width
         number = 0
         for index, item in enumerate(tiles(view)):
@@ -278,7 +282,7 @@ class PanelRenderer:
             if item == ADD_TILE:
                 rect(frame, fill=HOVER if over else KEY, outline=INK if over else KEY_EDGE)
                 text((x0 + width / 2, y0 + TILE_HEIGHT / 2 - 1), "+", 22, INK, "mono", "mm")
-                text((x0, y0 + TILE_HEIGHT + 5), "ADICIONAR", 9.5, INK if over else GREY, "mono-bold", spacing=0.8)
+                text((x0, y0 + TILE_HEIGHT + 5), t("panel.add"), 9.5, INK if over else GREY, "mono-bold", spacing=0.8)
                 regions.append(Region((x0, y0, x0 + width, y0 + TILE_HEIGHT + CAPTION), ("add",)))
                 continue
             picture = self.real_thumb if item is None else self.thumb(item)
@@ -288,10 +292,10 @@ class PanelRenderer:
                 rect(frame, fill=KEY)
                 hatch(frame, RULE)
             if item is None:
-                caption = "REAL"
+                caption = t("panel.real")
             else:
                 number += 1
-                caption = f"IMG {number:02d}"
+                caption = t("panel.image", number=number)
             if selected:
                 rect((x0 - 3, y0 - 3, x0 + width + 3, y0 + TILE_HEIGHT + 3), outline=INK, width=3)
                 rect((x0, y0 + TILE_HEIGHT + 8, x0 + 7, y0 + TILE_HEIGHT + 15), fill=TALLY)
@@ -310,12 +314,12 @@ class PanelRenderer:
                 regions.append(Region((x0, y0, x0 + width, y0 + TILE_HEIGHT + CAPTION), ("background", item)))
 
         y += gallery_height(view) + SECTION
-        section(y - 16, "C", "CONTROLES")
+        section(y - 16, "C", t("panel.controls"))
         buttons = (
-            ("SUMIR", "V", ("vanish",), view.manual_keys),
-            ("REAPARECER", "R", ("reappear",), view.manual_keys),
-            ("NOVO FUNDO", "ESPAÇO", ("recapture",), view.can_recapture),
-            ("JANELA" if view.fullscreen else "TELA CHEIA", "F", ("fullscreen",), True),
+            (t("panel.vanish"), "V", ("vanish",), view.manual_keys),
+            (t("panel.reappear"), "R", ("reappear",), view.manual_keys),
+            (t("panel.recapture"), t("panel.space"), ("recapture",), view.can_recapture),
+            (t("panel.window" if view.fullscreen else "panel.fullscreen"), "F", ("fullscreen",), True),
         )
         width = (WIDTH - 2 * PAD - TILE_GAP) / 2
         for index, (label, key, action, enabled) in enumerate(buttons):
@@ -324,7 +328,7 @@ class PanelRenderer:
             y0 = y + row * (KEY_HEIGHT + TILE_GAP)
             face = (x0, y0, x0 + width, y0 + KEY_HEIGHT - 3)
             if enabled:
-                # Tasto fisico: faccia chiara e bordo inferiore piu' spesso.
+                # A physical key: light face and a thicker bottom edge.
                 over = hovered((x0, y0, x0 + width, y0 + KEY_HEIGHT))
                 rect((x0, y0 + 3, x0 + width, y0 + KEY_HEIGHT), fill=KEY_EDGE)
                 rect(face, fill=HOVER if over else KEY, outline=INK if over else KEY_EDGE)
@@ -341,7 +345,7 @@ class PanelRenderer:
         if view.message:
             text((PAD, y + 17), fit(view.message, 10.5, "mono-bold", WIDTH - 2 * PAD), 10.5, TALLY, "mono-bold", "lm")
         else:
-            text((PAD, y + 17), "1–4 EFEITO   V SUMIR   R VOLTAR   Q SAIR", 9.5, GREY, "mono", "lm", spacing=0.6)
+            text((PAD, y + 17), t("panel.footer", count=len(MODE_CARDS)), 9.5, GREY, "mono", "lm", spacing=0.6)
 
         small = canvas.resize((WIDTH, height), Image.Resampling.BOX)
         return cv2.cvtColor(np.asarray(small), cv2.COLOR_RGB2BGR), regions
@@ -364,7 +368,7 @@ class ControlPanel:
         self.picked: queue.SimpleQueue[tuple] = queue.SimpleQueue()
         self.picking = False
         self.shown = None
-        # GUI_NORMAL: senza la barra degli strumenti e lo zoom di Qt.
+        # GUI_NORMAL: without the Qt toolbar and zoom.
         cv2.namedWindow(title, cv2.WINDOW_AUTOSIZE | cv2.WINDOW_GUI_NORMAL)
         cv2.setMouseCallback(title, self._on_mouse)
 
@@ -378,7 +382,7 @@ class ControlPanel:
         self.renderer.set_real_background(bgr)
 
     def show(self, view: PanelView) -> None:
-        # Ridisegna solo se cambia qualcosa: vista, elemento sotto il mouse, miniatura.
+        # Redraw only when something changes: the view, the item under the mouse, a thumbnail.
         over = hit(self.regions, *self.hover) if self.hover else None
         key = (view, over.box if over else None, self.renderer.version)
         if key == self.shown:
@@ -395,7 +399,7 @@ class ControlPanel:
             if region is not None:
                 actions.append(region.action)
         if ("add",) in actions:
-            # Un doppio clic apre una sola finestra.
+            # A double click opens a single dialog.
             actions = [action for action in actions if action != ("add",)]
             self._start_picker()
         while not self.picked.empty():
@@ -406,7 +410,7 @@ class ControlPanel:
         if self.picking:
             return
         self.picking = True
-        # La finestra di scelta blocca: fuori dal thread video, la webcam non si ferma.
+        # The picker blocks: off the video thread, so the webcam keeps running.
         threading.Thread(target=self._pick, name="background-picker", daemon=True).start()
 
     def _pick(self) -> None:

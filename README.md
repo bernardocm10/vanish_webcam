@@ -13,10 +13,11 @@ Everything runs on your computer: the video is never recorded or sent anywhere, 
 - **Custom backgrounds:** put any picture behind you; when you vanish, the picture is what remains.
 - **Works in calls:** virtual webcam for Teams, Zoom, Meet, and OBS, and a virtual microphone so the call hears the effect sounds (Linux).
 - **Remembers your choices** and starts with the last effect and background.
+- **Speaks your language:** the panel and messages are in English or Brazilian Portuguese, following your system.
 
 ## Quick start
 
-**Windows:** double-click `AVVIA_LOCALE.bat`. The first run installs everything it needs (internet required once).
+**Windows:** double-click `start.bat`. The first run installs everything it needs (internet required once).
 
 **Linux:**
 
@@ -41,7 +42,7 @@ Using it in a call? See [Calls, Teams and OBS](docs/calls.md).
 | **Normal** | V sign (index and middle finger) | You dissolve into the background |
 | **Naruto** | Palms pressed together, held for a moment | A cloud of smoke, and a log takes your place |
 | **Goku** | Two fingers on your forehead for 1 s | Speed lines and you teleport; repeat to come back |
-| **Partículas** | Salute: flat hand on your brow, held for a moment | You break into fragments carried by the wind |
+| **Particles** | Salute: flat hand on your brow, held for a moment | You break into fragments carried by the wind |
 
 Details for each one in [Effects](docs/effects.md).
 

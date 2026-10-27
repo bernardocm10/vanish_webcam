@@ -50,11 +50,11 @@ class VictoryGestureTests(unittest.TestCase):
 
     def test_other_gestures_do_not_trigger(self):
         for fingers in (
-            (False, False, False, False),  # Pugno.
-            (True, True, True, True),  # Palmo aperto.
-            (True, False, False, False),  # Solo indice.
-            (True, False, False, True),  # Corna.
-            (True, True, True, False),  # Tre dita.
+            (False, False, False, False),  # Fist.
+            (True, True, True, True),  # Open palm.
+            (True, False, False, False),  # Index only.
+            (True, False, False, True),  # Horns.
+            (True, True, True, False),  # Three fingers.
         ):
             with self.subTest(fingers=fingers):
                 self.assertEqual(victory_landmark_score(hand_points(fingers)), 0.0)
@@ -156,18 +156,18 @@ class BackgroundUpdateTests(unittest.TestCase):
         self.background = np.full((180, 320, 3), 100, dtype=np.uint8)
         self.mask = np.zeros((180, 320), dtype=np.float32)
         self.mask[40:180, 140:180] = 1.0
-        # Lo stesso sfondo ripreso con un'esposizione doppia, con la persona (scura) davanti.
+        # The same background shot at twice the exposure, with the (dark) person in front.
         self.frame = np.full((180, 320, 3), 200, dtype=np.uint8)
         self.frame[40:180, 140:180] = 30
 
     def test_exposure_change_reaches_the_area_behind_the_person(self):
         updated = update_background(self.background, self.frame, self.mask, rate=0.5)
-        # Niente ombra della persona: la zona coperta segue la nuova esposizione.
+        # No shadow of the person: the covered area follows the new exposure.
         np.testing.assert_array_equal(updated[40:180, 140:180], 200)
         self.assertEqual(updated[5, 5].tolist(), [200, 200, 200])
 
     def test_local_change_far_from_person_blends_and_person_never_leaks(self):
-        # Meta' piu' chiara e meta' piu' scura: la luce media non cambia (guadagno 1).
+        # Half brighter and half darker: the mean light does not change (gain 1).
         background = self.background.copy()
         background[:, :160] = 50
         background[:, 160:] = 150
@@ -191,7 +191,7 @@ class BackgroundUpdateTests(unittest.TestCase):
 
 class BackgroundImageTests(unittest.TestCase):
     def test_fit_covers_frame_without_stretching(self):
-        # Immagine 4:3 con una banda rossa in alto e in basso: in 16:9 vengono tagliate.
+        # A 4:3 picture with a red band at the top and bottom: at 16:9 they are cropped.
         image = np.zeros((300, 400, 3), np.uint8)
         image[:25] = (0, 0, 255)
         image[-25:] = (0, 0, 255)
@@ -251,7 +251,7 @@ class MultiViewTests(unittest.TestCase):
         detector = MultiViewGestureRecognizer(
             SimpleNamespace(recognize_for_video=lambda image, timestamp: self.empty), alternate
         )
-        # Al massimo 3 viste costose per frame, poi pausa fino al prossimo intervallo.
+        # At most 3 expensive views per frame, then a pause until the next interval.
         self.assertEqual(recognize_gesture(detector, self.image, 1000)[0], "No_Hand")
         self.assertEqual(len(calls), 3)
         recognize_gesture(detector, self.image, 1100)
@@ -283,8 +283,8 @@ class MultiViewTests(unittest.TestCase):
             SimpleNamespace(recognize_for_video=lambda image, timestamp: self.empty),
             SimpleNamespace(recognize=recognize),
         )
-        # Le viste alternative sono distribuite su piu' frame: il ritaglio
-        # inferiore arriva al secondo tentativo.
+        # The alternative views are spread over several frames: the lower
+        # crop comes at the second attempt.
         self.assertEqual(recognize_gesture(detector, self.image, 1000)[0], "No_Hand")
         self.assertEqual(recognize_gesture(detector, self.image, 1140)[0], "Victory")
         self.assertEqual(detector.preferred_crop, "lower_left")

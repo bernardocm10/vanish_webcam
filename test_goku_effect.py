@@ -159,7 +159,7 @@ class GokuModeTests(unittest.TestCase):
             np.testing.assert_array_equal(self.render(2.6), self.background)
             self.assertEqual(self.mode.phase, "vanished")
             self.assertTrue(self.mode.detecting)
-            self.hold_pose(3.0)  # Mano mai abbassata: non riappare.
+            self.hold_pose(3.0)  # Hand never lowered: does not reappear.
             self.assertEqual(self.mode.phase, "vanished")
             self.mode.on_detection(False, 4.2)
             self.mode.on_detection(False, 4.6)
@@ -167,7 +167,7 @@ class GokuModeTests(unittest.TestCase):
             self.assertEqual(self.mode.phase, "appearing")
             self.assertFalse(self.mode.detecting)
             self.render(6.0)
-            last = self.render(7.3)  # Ultimo frame dell'effetto: persona intera sullo sfondo.
+            last = self.render(7.3)  # Last frame of the effect: the whole person over the background.
             np.testing.assert_array_equal(last[20:60, 35:45], self.frame[20:60, 35:45])
             self.assertEqual(self.mode.phase, "ready")
             np.testing.assert_array_equal(self.render(7.4), self.frame)

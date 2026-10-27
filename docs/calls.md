@@ -47,7 +47,7 @@ Run this once to add **VanishCam** to the GNOME app menu:
 ./install-launcher.sh
 ```
 
-The launcher runs `vanishcam-launcher.sh`. After a reboot, when the virtual webcam is missing, it asks for your password in a system dialog to create it; then it opens the app. The panel's **ADICIONAR** button uses `zenity` (preinstalled on GNOME) or `kdialog` as the file picker.
+The launcher runs `vanishcam-launcher.sh`. After a reboot, when the virtual webcam is missing, it asks for your password in a system dialog to create it; then it opens the app. The panel's **ADD** button uses `zenity` (preinstalled on GNOME) or `kdialog` as the file picker.
 
 To remove the launcher: `rm ~/.local/share/applications/vanishcam.desktop`.
 
@@ -57,12 +57,12 @@ To remove the launcher: `rm ~/.local/share/applications/vanishcam.desktop`.
 
 If [OBS Studio](https://obsproject.com/) is installed, the app automatically tries to open **OBS Virtual Camera**; the terminal shows the device name. Then select **OBS Virtual Camera** as the camera in your call app.
 
-- `AVVIA_VIRTUAL.bat` starts the app and **requires** a virtual camera.
+- `start-virtual.bat` starts the app and **requires** a virtual camera.
 - OBS's own virtual camera must be **stopped** while VanishCam is sending video to it.
 
 ### Inside an OBS scene
 
-1. Run `AVVIA_OBS.bat`.
+1. Run `start-obs.bat`.
 2. In OBS, add a **Window Capture** source and select the **Webcam - Anteprima** window.
 3. Start the virtual camera from OBS.
 
@@ -73,7 +73,7 @@ OBS has only one virtual camera, so do not use it as both an OBS input and outpu
 As an alternative virtual video source, use [Unity Capture](https://github.com/schellingb/UnityCapture):
 
 ```powershell
-.\AVVIA_VIRTUAL.bat --virtual-backend unitycapture
+.\start-virtual.bat --virtual-backend unitycapture
 ```
 
 See the [pyvirtualcam documentation](https://github.com/letmaik/pyvirtualcam#supported-virtual-cameras) for all supported virtual cameras.

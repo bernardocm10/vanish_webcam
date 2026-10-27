@@ -8,9 +8,14 @@ from pathlib import Path
 import cv2
 import numpy as np
 
+try:
+    from .i18n import t
+except ImportError:
+    from i18n import t
+
 
 EFFECT_SECONDS = 1.45
-# Le mani devono restare giunte per un attimo: avvicinandole si passa per pose simili.
+# The hands must stay joined for a moment: bringing them together passes through similar poses.
 HOLD_SECONDS = 0.2
 LOG_PATH = Path(__file__).resolve().parent / "assets" / "substitution_log.png"
 
@@ -36,7 +41,7 @@ def joined_hands_from_landmarks(hands, width: int, height: int) -> bool:
     alignment = float(np.dot(*directions) /
                       max(1e-6, np.linalg.norm(directions[0]) * np.linalg.norm(directions[1])))
     fingertips = [hand[[8, 12, 16, 20]].mean(axis=0) for hand in points]
-    # Due mani aperte affiancate (prima del gesto) restano a quasi una mano di distanza: non bastano.
+    # Two open hands side by side (before the gesture) stay almost a hand apart: not enough.
     return (
         alignment > 0.55
         and np.linalg.norm(palms[0] - palms[1]) < size * 0.8
@@ -63,7 +68,7 @@ def substitution_anchor(mask: np.ndarray) -> tuple[int, int, int]:
 def load_log() -> np.ndarray:
     sprite = cv2.imread(str(LOG_PATH), cv2.IMREAD_UNCHANGED)
     if sprite is None or sprite.ndim != 3 or sprite.shape[2] != 4:
-        raise RuntimeError(f"Imagem do tronco indisponível: {LOG_PATH}")
+        raise RuntimeError(t("log.unreadable", path=LOG_PATH))
     return sprite
 
 

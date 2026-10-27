@@ -13,12 +13,17 @@ import subprocess
 import time
 from pathlib import Path
 
+try:
+    from .i18n import t
+except ImportError:
+    from i18n import t
+
 
 MIX_SINK = "vanishcam_mix"
 MIC_SOURCE = "vanishcam_mic"
 MIC_DESCRIPTION = "VanishCam Mic"
-# Priorita' zero: il sistema non li sceglie mai da solo come predefiniti
-# (altrimenti tutto l'audio del computer finirebbe nella chiamata).
+# Zero priority: the system never picks them as defaults on its own
+# (otherwise all the computer's audio would end up in the call).
 _QUIET = "priority.session=0 priority.driver=0 node.virtual=true"
 
 
@@ -30,7 +35,7 @@ def default_source() -> str:
     ).stdout
     match = re.search(r'node\.name = "([^"]+)"', output)
     if match is None:
-        raise RuntimeError("Nenhum microfone padrão no PipeWire.")
+        raise RuntimeError(t("mic.no_default"))
     return match.group(1)
 
 
@@ -45,16 +50,16 @@ class VirtualMic:
     def __init__(self, source: str | None = None):
         missing = [tool for tool in ("pw-loopback", "pw-play", "pw-cli", "wpctl") if shutil.which(tool) is None]
         if missing:
-            raise RuntimeError(f"PipeWire indisponível (falta {', '.join(missing)}).")
+            raise RuntimeError(t("mic.no_pipewire", tools=", ".join(missing)))
         self.source = source or default_source()
         if self.source in (MIC_SOURCE, MIX_SINK):
-            raise RuntimeError(f"O microfone padrão já é o {MIC_DESCRIPTION}: escolha um microfone real.")
+            raise RuntimeError(t("mic.default_is_virtual", name=MIC_DESCRIPTION))
         if node_exists(MIX_SINK):
-            raise RuntimeError(f"O {MIC_DESCRIPTION} já existe: feche a outra janela do VanishCam.")
+            raise RuntimeError(t("mic.already_running", name=MIC_DESCRIPTION))
         self.processes: list[subprocess.Popen] = []
         self.players: list[subprocess.Popen] = []
         try:
-            # Mix: quello che entra nel sink esce dal microfono virtuale.
+            # Mix: whatever enters the sink comes out of the virtual microphone.
             self._spawn(
                 "--name", "vanishcam-mic",
                 "--capture-props",
@@ -63,9 +68,9 @@ class VirtualMic:
                 f'media.class=Audio/Source node.name={MIC_SOURCE} node.description="{MIC_DESCRIPTION}" {_QUIET}',
             )
             self._wait_for(MIX_SINK)
-            # Voce: il microfono reale entra nel mix.
+            # Voice: the real microphone goes into the mix.
             self._spawn(
-                # Opzioni corte: PipeWire 1.0 non accetta --channels/--channel-map.
+                # Short options: PipeWire 1.0 does not accept --channels/--channel-map.
                 "--name", "vanishcam-voice", "-c", "1", "-m", "[ MONO ]",
                 "-C", self.source, "-P", MIX_SINK,
                 "--playback-props", "node.dont-reconnect=true",
@@ -75,8 +80,8 @@ class VirtualMic:
             raise
 
     def _spawn(self, *arguments: str) -> None:
-        # setpriv --pdeathsig: se l'app muore (anche con kill -9) muore anche il
-        # loopback, cosi' "VanishCam Mic" non resta orfano nel sistema.
+        # setpriv --pdeathsig: if the app dies (even with kill -9) the loopback dies
+        # too, so "VanishCam Mic" is not left orphaned in the system.
         guard = ["setpriv", "--pdeathsig", "TERM"] if shutil.which("setpriv") else []
         self.processes.append(subprocess.Popen(
             [*guard, "pw-loopback", *arguments],
@@ -87,11 +92,11 @@ class VirtualMic:
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
             if any(process.poll() is not None for process in self.processes):
-                raise RuntimeError("O pw-loopback fechou logo ao abrir: verifique o PipeWire.")
+                raise RuntimeError(t("mic.loopback_exited"))
             if node_exists(name):
                 return
             time.sleep(0.05)
-        raise RuntimeError(f"O PipeWire não criou {name} em {timeout:g} s.")
+        raise RuntimeError(t("mic.timeout", name=name, seconds=timeout))
 
     def play(self, path: Path) -> None:
         """Send a sound into the call (the local speakers are handled by VanishSound)."""

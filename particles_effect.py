@@ -14,13 +14,13 @@ except ImportError:
 
 
 EFFECT_SECONDS = 2.1
-# La continenza va tenuta un attimo: una mano che passa davanti alla fronte non basta.
+# The salute must be held for a moment: a hand passing in front of the forehead is not enough.
 SALUTE_HOLD_SECONDS = 0.4
-# Face Mesh: estremita' esterne delle sopracciglia, verso le tempie.
+# Face Mesh: outer ends of the eyebrows, towards the temples.
 BROW_LEFT = 70
 BROW_RIGHT = 300
-# I frammenti partono entro DEPART_SECONDS e svaniscono entro LIFE_SECONDS[1]:
-# la somma resta dentro EFFECT_SECONDS.
+# Fragments leave within DEPART_SECONDS and fade within LIFE_SECONDS[1]:
+# the sum stays inside EFFECT_SECONDS.
 DEPART_SECONDS = 1.0
 LIFE_SECONDS = (0.7, 1.1)
 
@@ -29,17 +29,17 @@ LIFE_SECONDS = (0.7, 1.1)
 class ParticleCloud:
     """Silhouette captured once when the effect starts; everything else is computed."""
 
-    origin: np.ndarray      # (N, 2) centro di ogni frammento, in pixel (x, y)
-    color: np.ndarray       # (N, 3) colore medio della cella, BGR
-    delay: np.ndarray       # (N,) secondi prima che il frammento si stacchi
-    life: np.ndarray        # (N,) durata del volo
-    velocity: np.ndarray    # (N, 2) pixel al secondo
-    flutter: np.ndarray     # (N,) fase dell'oscillazione verticale
-    size: int               # lato del frammento in pixel
-    body: np.ndarray        # frame catturato all'avvio
-    body_mask: np.ndarray   # maschera catturata all'avvio
-    body_delay: np.ndarray  # ritardo per pixel: il corpo si sgretola insieme ai frammenti
-    wind: np.ndarray        # accelerazione del vento, pixel/s^2
+    origin: np.ndarray      # (N, 2) center of each fragment, in pixels (x, y)
+    color: np.ndarray       # (N, 3) mean color of the cell, BGR
+    delay: np.ndarray       # (N,) seconds before the fragment breaks off
+    life: np.ndarray        # (N,) flight duration
+    velocity: np.ndarray    # (N, 2) pixels per second
+    flutter: np.ndarray     # (N,) phase of the vertical flutter
+    size: int               # fragment side in pixels
+    body: np.ndarray        # frame captured at the start
+    body_mask: np.ndarray   # mask captured at the start
+    body_delay: np.ndarray  # per-pixel delay: the body crumbles together with the fragments
+    wind: np.ndarray        # wind acceleration, pixels/s^2
 
 
 def make_particles(frame: np.ndarray, mask: np.ndarray, seed: int = 2024) -> ParticleCloud:
@@ -55,7 +55,7 @@ def make_particles(frame: np.ndarray, mask: np.ndarray, seed: int = 2024) -> Par
 
     x_norm = (cols + 0.5) / grid[0]
     y_norm = (rows + 0.5) / grid[1]
-    # Il vento soffia verso destra: si sgretola prima il lato destro e l'alto.
+    # The wind blows to the right: the right side and the top crumble first.
     sweep = 0.65 * (1.0 - x_norm) + 0.35 * y_norm
     if count:
         sweep = (sweep - sweep.min()) / max(float(np.ptp(sweep)), 1e-6)
@@ -63,8 +63,8 @@ def make_particles(frame: np.ndarray, mask: np.ndarray, seed: int = 2024) -> Par
 
     cell_delay = np.zeros((grid[1], grid[0]), dtype=np.float32)
     cell_delay[rows, cols] = delay
-    # Le celle di bordo (coperte a meta') non diventano frammenti: si staccano
-    # con i vicini, altrimenti resterebbe un contorno fantasma.
+    # Edge cells (half covered) do not become fragments: they break off with
+    # their neighbors, otherwise a ghost outline would remain.
     neighbours = cv2.dilate(cell_delay, np.ones((3, 3), np.uint8))
     is_particle = np.zeros_like(cell_delay, dtype=bool)
     is_particle[rows, cols] = True
@@ -94,7 +94,7 @@ def render_particles(background: np.ndarray, cloud: ParticleCloud, elapsed: floa
     canvas = background.copy()
     height, width = canvas.shape[:2]
 
-    # Il corpo resta dove i frammenti non sono ancora partiti.
+    # The body remains where the fragments have not left yet.
     attached = cloud.body_mask * np.clip((cloud.body_delay - elapsed) / 0.06, 0.0, 1.0)
     x, y, w, h = cv2.boundingRect((attached > 0.01).view(np.uint8))
     if w and h:
@@ -117,7 +117,7 @@ def render_particles(background: np.ndarray, cloud: ParticleCloud, elapsed: floa
     )
     position[:, 1] += 6.0 * np.sin(flight[:, 0] * 8.0 + cloud.flutter[active]) * (width / 1280.0)
     fade = 1.0 - (flight[:, 0] / cloud.life[active]) ** 1.5
-    # In volo i frammenti schiariscono un poco, come polvere controluce.
+    # In flight the fragments lighten a little, like backlit dust.
     color = cloud.color[active] + (255.0 - cloud.color[active]) * (0.35 * (1.0 - fade))[:, None]
 
     offsets = np.arange(cloud.size) - cloud.size // 2
@@ -158,11 +158,11 @@ def salute_pose(hand_landmarks, face, width: int, height: int) -> bool:
     for base in (5, 9, 13, 17):
         finger = points[base : base + 4]
         length = float(np.linalg.norm(np.diff(finger, axis=0), axis=1).sum())
-        # Mano tesa: tutte e quattro le dita dritte (Goku invece piega anulare e mignolo).
+        # Flat hand: all four fingers straight (Goku instead folds the ring and little fingers).
         if length < 4.0 or np.linalg.norm(finger[3] - finger[0]) / length < 0.75:
             return False
         lengths.append(length)
-    # Dita unite: punte vicine tra loro, non una mano aperta a ventaglio.
+    # Fingers together: tips close to each other, not a hand fanned open.
     tips = points[[8, 12, 16, 20]]
     if np.linalg.norm(np.diff(tips, axis=0), axis=1).max() > float(np.mean(lengths[:3])) * 0.45:
         return False

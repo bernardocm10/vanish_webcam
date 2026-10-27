@@ -49,7 +49,7 @@ def salute(shift=0.0, spread=0.0, folded=False, bend=0.0):
 class ParticlesEffectTests(unittest.TestCase):
     def setUp(self):
         self.frame = np.zeros((120, 160, 3), np.uint8)
-        self.frame[:, :, 1] = 180  # Persona verde su sfondo grigio.
+        self.frame[:, :, 1] = 180  # Green person on a grey background.
         self.background = np.full((120, 160, 3), 90, np.uint8)
         self.mask = np.zeros((120, 160), np.float32)
         self.mask[30:110, 60:100] = 1.0
@@ -69,7 +69,7 @@ class ParticlesEffectTests(unittest.TestCase):
         start = render_particles(self.background, self.cloud, 0.0)
         np.testing.assert_array_equal(start[40:100, 65:95], self.frame[40:100, 65:95])
         middle = render_particles(self.background, self.cloud, 0.8)
-        # Il vento soffia verso destra: frammenti oltre il bordo destro della sagoma.
+        # The wind blows to the right: fragments past the right edge of the silhouette.
         self.assertTrue(np.any(middle[:, 105:] != self.background[:, 105:]))
         np.testing.assert_array_equal(middle[:, :50], self.background[:, :50])
         np.testing.assert_array_equal(
@@ -89,11 +89,11 @@ class SalutePoseTests(unittest.TestCase):
         self.assertTrue(salute_pose(salute(), self.face, WIDTH, HEIGHT))
 
     def test_rejects_poses_that_are_not_a_salute(self):
-        self.assertFalse(salute_pose(salute(), None, WIDTH, HEIGHT))  # Nessun viso.
-        self.assertFalse(salute_pose(salute(shift=0.15), self.face, WIDTH, HEIGHT))  # Mano lontana.
-        self.assertFalse(salute_pose(salute(spread=0.06), self.face, WIDTH, HEIGHT))  # Dita a ventaglio.
-        self.assertFalse(salute_pose(salute(folded=True), self.face, WIDTH, HEIGHT))  # Posa di Goku.
-        self.assertFalse(salute_pose(salute(bend=0.05), self.face, WIDTH, HEIGHT))  # Dita piegate.
+        self.assertFalse(salute_pose(salute(), None, WIDTH, HEIGHT))  # No face.
+        self.assertFalse(salute_pose(salute(shift=0.15), self.face, WIDTH, HEIGHT))  # Hand far away.
+        self.assertFalse(salute_pose(salute(spread=0.06), self.face, WIDTH, HEIGHT))  # Fingers fanned out.
+        self.assertFalse(salute_pose(salute(folded=True), self.face, WIDTH, HEIGHT))  # Goku pose.
+        self.assertFalse(salute_pose(salute(bend=0.05), self.face, WIDTH, HEIGHT))  # Bent fingers.
         self.assertFalse(salute_pose(salute()[:20], self.face, WIDTH, HEIGHT))
 
     def test_detector_remembers_the_brow_while_the_hand_covers_it(self):
@@ -128,7 +128,7 @@ class ParticlesModeTests(unittest.TestCase):
         mode.reappear()
         mode.on_detection(True, 1.6)
         mode.on_detection(True, 2.5)
-        self.assertEqual(mode.phase, "ready")  # Mano ancora sulla fronte.
+        self.assertEqual(mode.phase, "ready")  # Hand still on the forehead.
         mode.on_detection(False, 2.6)
         mode.on_detection(False, 3.0)
         mode.on_detection(True, 3.1)

@@ -54,7 +54,7 @@ class FakePanel:
         self.views.append(view)
 
     def poll(self):
-        # Un'azione puo' essere una funzione del pannello: serve quando dipende da cio' che e' gia' successo.
+        # An action can be a function of the panel: useful when it depends on what already happened.
         actions = self.actions.pop(0) if self.actions else []
         return [action(self) if callable(action) else action for action in actions]
 
@@ -117,7 +117,7 @@ class VirtualCameraTests(unittest.TestCase):
     def test_send_preserves_colors_and_handles_noncontiguous_frames(self):
         camera = Mock(width=40, height=24)
         frame = np.zeros((24, 40, 3), np.uint8)
-        frame[:] = (10, 70, 200)  # BGR: non scambiare rosso e blu.
+        frame[:] = (10, 70, 200)  # BGR: do not swap red and blue.
         app.send_virtual_frame(camera, frame[:, ::-1])
         sent = camera.send.call_args.args[0]
         self.assertTrue(sent.flags.c_contiguous)
@@ -179,7 +179,7 @@ class VideoLoopTests(unittest.TestCase):
         read, clock = video_clock(frames, (0, 0.1, 0.2))
         capture.read.side_effect = read
         mask = np.zeros((24, 40), np.float32)
-        mask[:, :20] = 1.0  # Persona a sinistra, stanza a destra.
+        mask[:, :20] = 1.0  # Person on the left, room on the right.
         displayed = []
         with ExitStack() as mocks:
             args = arguments(virtual_camera=False, background_image="beach.png")
@@ -202,10 +202,10 @@ class VideoLoopTests(unittest.TestCase):
             mocks.enter_context(patch("builtins.print"))
             self.assertEqual(app.run(), 0)
         loaded.assert_called_once_with(Path("beach.png"))
-        # Gia' dal primo frame: persona davanti all'immagine, niente calibrazione.
+        # From the very first frame: the person in front of the picture, no calibration.
         self.assertTrue((displayed[0][:, :20] == 200).all())
         self.assertTrue((displayed[0][:, 20:] == 30).all())
-        # Dopo V la persona inizia a dissolversi nell'immagine, non nella stanza.
+        # After V the person starts dissolving into the picture, not into the room.
         self.assertTrue((displayed[2][:, 20:] == 30).all())
         self.assertLess(int(displayed[2][:, :20].min()), 200)
 
@@ -214,16 +214,16 @@ class VideoLoopTests(unittest.TestCase):
         self.assertEqual(len(displayed), 5)
         for sent, preview in zip(camera.send.call_args_list, displayed):
             np.testing.assert_array_equal(sent.args[0], preview)
-        np.testing.assert_array_equal(displayed[0], frames[0])  # Calibrazione.
-        np.testing.assert_array_equal(displayed[2], frames[2])  # Pronto.
-        np.testing.assert_array_equal(displayed[4], frames[1])  # Sparito: solo sfondo.
+        np.testing.assert_array_equal(displayed[0], frames[0])  # Calibration.
+        np.testing.assert_array_equal(displayed[2], frames[2])  # Ready.
+        np.testing.assert_array_equal(displayed[4], frames[1])  # Gone: background only.
 
     def test_first_gesture_starts_dissolve_in_preview_and_virtual_output(self):
         frames, camera, displayed = self.run_mock_video(gesture=("Victory", 0.9))
         np.testing.assert_array_equal(camera.send.call_args_list[2].args[0], displayed[2])
-        self.assertTrue(np.any(displayed[3] != frames[3]))  # Animazione in corso.
-        self.assertTrue(np.any(displayed[3] != frames[1]))  # Non ancora sparito.
-        np.testing.assert_array_equal(displayed[4], frames[1])  # Animazione completata.
+        self.assertTrue(np.any(displayed[3] != frames[3]))  # Animation running.
+        self.assertTrue(np.any(displayed[3] != frames[1]))  # Not gone yet.
+        np.testing.assert_array_equal(displayed[4], frames[1])  # Animation finished.
 
     def test_all_devices_close_on_send_error(self):
         self.run_mock_video(send_error=RuntimeError("send failed"))
@@ -249,7 +249,7 @@ class AsyncRecognizerTests(unittest.TestCase):
         try:
             recognizer.submit(np.zeros((6, 9, 3), np.uint8), 120)
             self.assertEqual(self.wait_result(recognizer), ((9, 120), 120))
-            self.assertIsNone(recognizer.take_result())  # Ogni risultato si legge una volta.
+            self.assertIsNone(recognizer.take_result())  # Each result is read once.
             self.assertEqual(threads, ["gesture"])
         finally:
             recognizer.close()
@@ -257,7 +257,7 @@ class AsyncRecognizerTests(unittest.TestCase):
 
     def test_detector_error_reaches_the_video_loop(self):
         def detect(image, timestamp_ms):
-            raise ValueError("modello rotto")
+            raise ValueError("broken model")
 
         recognizer = app.AsyncRecognizer(detect, lambda: None)
         try:
@@ -266,7 +266,7 @@ class AsyncRecognizerTests(unittest.TestCase):
                 if not recognizer.busy:
                     break
                 time.sleep(0.01)
-            with self.assertRaisesRegex(RuntimeError, "modello rotto"):
+            with self.assertRaisesRegex(RuntimeError, "broken model"):
                 recognizer.take_result()
         finally:
             recognizer.close()

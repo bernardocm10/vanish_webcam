@@ -15,6 +15,7 @@ from control_panel import (
     ADD_TILE, AMBER, MODE_CARDS, WIDTH, ControlPanel, PanelRenderer, PanelView, hit, panel_height, tiles,
 )
 from test_video_output import InlineRecognizer, app_mocks, arguments, video_clock
+from i18n import t
 from user_data import MAX_GALLERY, Settings, UserData
 
 
@@ -54,9 +55,9 @@ class UserDataTests(unittest.TestCase):
         gallery = self.data.gallery()
         self.assertEqual(len(gallery), MAX_GALLERY)
         self.assertEqual(gallery[0], copies[-1])
-        self.assertTrue(source.is_file())  # L'originale resta dov'era.
+        self.assertTrue(source.is_file())  # The original stays where it was.
         self.assertTrue(all(path.suffix == ".png" for path in gallery))
-        self.assertEqual(self.data.import_image(gallery[0]), gallery[0])  # Gia' in galleria.
+        self.assertEqual(self.data.import_image(gallery[0]), gallery[0])  # Already in the gallery.
         with self.assertRaises(ValueError):
             self.data.import_image(self.folder / "notas.txt")
 
@@ -94,9 +95,9 @@ class PanelRendererTests(unittest.TestCase):
         actions = self.actions(self.regions(view))
         self.assertIn(("background", None), actions)
         self.assertIn(("background", self.gallery[0]), actions)
-        self.assertNotIn(("background", self.gallery[1]), actions)  # Gia' scelto.
+        self.assertNotIn(("background", self.gallery[1]), actions)  # Already chosen.
         self.assertIn(("add",), actions)
-        # Un'immagine da riga di comando, fuori dalla galleria, compare comunque.
+        # A picture from the command line, outside the gallery, shows up anyway.
         outside = self.folder / "fora.png"
         self.assertEqual(tiles(PanelView("normal", "", background=outside))[:2], [None, outside])
 
@@ -120,7 +121,7 @@ class PanelRendererTests(unittest.TestCase):
             self.assertIn(action, enabled)
 
     def test_unreadable_gallery_image_still_renders(self):
-        broken = self.folder / "quebrada.png"
+        broken = self.folder / "broken.png"
         broken.write_bytes(b"nada")
         self.regions(PanelView("normal", "Pronto", gallery=(broken,)))
 
@@ -145,7 +146,7 @@ class ControlPanelWindowTests(unittest.TestCase):
         self.panel.show(view)
         self.assertEqual(self.imshow.call_count, 1)
         self.click(("mode", "goku"))
-        self.panel._on_mouse(cv2.EVENT_LBUTTONUP, 2, 2, 0, None)  # Fuori dai pulsanti.
+        self.panel._on_mouse(cv2.EVENT_LBUTTONUP, 2, 2, 0, None)  # Outside the buttons.
         self.assertEqual(self.panel.poll(), [("mode", "goku")])
         self.assertEqual(self.panel.poll(), [])
         self.panel.show(PanelView("goku", "Pronto"))
@@ -155,7 +156,7 @@ class ControlPanelWindowTests(unittest.TestCase):
         self.panel.show(PanelView("normal", "Pronto"))
         with patch.object(control_panel, "pick_image_file", **picker) as dialog:
             self.click(("add",))
-            self.click(("add",))  # Doppio clic: una sola finestra.
+            self.click(("add",))  # Double click: a single dialog.
             actions = self.panel.poll()
             for _ in range(200):
                 if not self.panel.picking:
@@ -184,7 +185,7 @@ class LiveSwitchTests(unittest.TestCase):
         read, clock = video_clock(images, (0.0, 4.1) + tuple(4.3 + 0.2 * i for i in range(frames - 2)))
         capture.read.side_effect = read
         mask = np.zeros((24, 40), np.float32)
-        mask[:, :20] = 1.0  # Persona a sinistra.
+        mask[:, :20] = 1.0  # Person on the left.
         recognizers = [Mock() for _ in range(3)]
         for recognizer in recognizers:
             recognizer.recognize_joined_hands.return_value = False
@@ -210,9 +211,9 @@ class LiveSwitchTests(unittest.TestCase):
             mocks.enter_context(patch.object(app.cv2, "waitKey", side_effect=keys))
             mocks.enter_context(patch("builtins.print"))
             self.assertEqual(app.run(), 0)
-            # La cartella temporanea sparisce all'uscita: leggi subito cosa e' stato salvato.
+            # The temporary folder disappears on exit: read what was saved right away.
             self.saved, self.final_gallery = user_data.load(), user_data.gallery()
-            # Webcam e segmentazione restano aperte durante i cambi.
+            # Webcam and segmentation stay open across the switches.
             opening.assert_called_once()
             self.assertEqual(app.create_segmenter.call_count, 1)
         return images, displayed, panel, user_data, recognizers
@@ -225,30 +226,30 @@ class LiveSwitchTests(unittest.TestCase):
         self.assertEqual([view.mode for view in panel.views], ["normal"] * 3 + ["naruto"] * 3)
         self.assertTrue(all(view.status_color != AMBER for view in panel.views[1:]))
         recognizers[0].close.assert_called_once()
-        recognizers[1].close.assert_called_once()  # Chiuso all'uscita.
+        recognizers[1].close.assert_called_once()  # Closed on exit.
         self.assertEqual(self.creating.call_args_list[1].args, ("naruto",))
         self.assertEqual(self.saved.mode, "naruto")
-        self.assertEqual(len(panel.real_backgrounds), 1)  # Calibrato una volta sola.
+        self.assertEqual(len(panel.real_backgrounds), 1)  # Calibrated only once.
 
     def test_number_keys_switch_mode(self):
         _, _, panel, user_data, _ = self.run_app(keys=[0, 0, ord("3"), 0, ord("4")])
         self.assertEqual([view.mode for view in panel.views], ["normal"] * 3 + ["goku"] * 2 + ["particles"])
-        self.assertFalse(panel.views[3].manual_keys)  # Goku: niente V e R.
+        self.assertFalse(panel.views[3].manual_keys)  # Goku: no V and R.
         self.assertEqual(self.saved.mode, "particles")
 
     def test_failed_mode_switch_keeps_the_previous_mode(self):
-        # Il nuovo modo non si apre: si torna a quello di prima, con un messaggio.
+        # The new mode fails to open: back to the previous one, with a message.
         original = app.EffectRuntime.__init__
 
         def flaky(runtime, name, segment, mic):
             if name == "naruto":
-                raise RuntimeError("modelo quebrado")
+                raise RuntimeError("broken model")
             original(runtime, name, segment, mic)
 
         with patch.object(app.EffectRuntime, "__init__", flaky):
             _, _, panel, user_data, _ = self.run_app([[], [], [("mode", "naruto")]])
         self.assertEqual({view.mode for view in panel.views}, {"normal"})
-        self.assertIn("modelo quebrado", panel.views[3].message)
+        self.assertIn("broken model", panel.views[3].message)
         self.assertEqual(self.saved.mode, "normal")
 
     def test_image_from_gallery_replaces_room_and_is_remembered(self):
@@ -282,7 +283,7 @@ class LiveSwitchTests(unittest.TestCase):
         )
         self.assertEqual(panel.views[0].mode, "particles")
         self.assertIsNotNone(panel.views[0].background)
-        self.assertNotEqual(panel.views[0].status_color, AMBER)  # Nessuna calibrazione.
+        self.assertNotEqual(panel.views[0].status_color, AMBER)  # No calibration.
         self.assertTrue((displayed[0][:, 20:] == 30).all())
         self.assertEqual(panel.real_backgrounds, [])
 
@@ -299,14 +300,14 @@ class LiveSwitchTests(unittest.TestCase):
         self.assertEqual(self.final_gallery, [])
         self.assertTrue(outside.is_file())
         self.assertEqual(panel.views[3].gallery, ())
-        self.assertEqual(panel.views[3].status_color, AMBER)  # Mai calibrato: ora si calibra.
+        self.assertEqual(panel.views[3].status_color, AMBER)  # Never calibrated: calibrate now.
 
     def test_bad_import_shows_a_message(self):
         folder = Path(self.enterContext(tempfile.TemporaryDirectory()))
-        broken = folder / "quebrada.png"
+        broken = folder / "broken.png"
         broken.write_bytes(b"nada")
         _, _, panel, user_data, _ = self.run_app([[], [], [("import", broken)]], frames=4)
-        self.assertIn("Imagem não adicionada", panel.views[3].message)
+        self.assertTrue(panel.views[3].message.startswith(t("loop.image_not_added", error="")))
         self.assertEqual(self.final_gallery, [])
 
 

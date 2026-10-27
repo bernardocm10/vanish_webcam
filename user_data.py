@@ -16,9 +16,13 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
+try:
+    from .i18n import t
+except ImportError:
+    from i18n import t
+
 IMAGE_SUFFIXES = (".jpg", ".jpeg", ".png", ".bmp", ".webp")
 MAX_GALLERY = 7
-PICKER_TITLE = "Escolha uma imagem de fundo"
 
 
 def config_dir() -> Path:
@@ -56,7 +60,7 @@ class UserData:
             return Settings()
         mode = data.get("mode") if isinstance(data.get("mode"), str) else None
         background = data.get("background")
-        # Un'immagine cancellata nel frattempo torna allo sfondo reale.
+        # A picture deleted in the meantime falls back to the real background.
         if not isinstance(background, str) or not Path(background).is_file():
             background = None
         return Settings(mode, Path(background) if background else None)
@@ -72,8 +76,8 @@ class UserData:
             temporary.write_text(json.dumps(data, indent=2), encoding="utf-8")
             os.replace(temporary, self.settings_file)
         except OSError as error:
-            # Non salvare le preferenze non deve fermare la webcam.
-            print(f"[Webcam] Não consegui salvar as preferências: {error}")
+            # Failing to save the preferences must not stop the webcam.
+            print(f"[VanishCam] {t('prefs.save_failed', error=error)}")
 
     def gallery(self) -> list[Path]:
         """Gallery images, newest first."""
@@ -89,11 +93,11 @@ class UserData:
         """Copy an image into the gallery; the oldest ones go beyond MAX_GALLERY."""
         source = Path(source)
         if source.suffix.lower() not in IMAGE_SUFFIXES:
-            raise ValueError(f"Formato não suportado: {source.name}")
+            raise ValueError(t("gallery.unsupported", name=source.name))
         self.backgrounds_dir.mkdir(parents=True, exist_ok=True)
         if source.parent.resolve() == self.backgrounds_dir.resolve():
             return source
-        stem = "".join(c if c.isalnum() or c in "-_" else "_" for c in source.stem)[:40] or "fundo"
+        stem = "".join(c if c.isalnum() or c in "-_" else "_" for c in source.stem)[:40] or "background"
         target = self.backgrounds_dir / f"{time.time_ns()}-{stem}{source.suffix.lower()}"
         shutil.copyfile(source, target)
         for old in self.gallery()[MAX_GALLERY:]:
@@ -102,7 +106,7 @@ class UserData:
 
     def remove_image(self, path: Path) -> None:
         path = Path(path)
-        # Solo le copie della galleria: mai i file originali dell'utente.
+        # Only the gallery copies: never the user's original files.
         if path.parent.resolve() == self.backgrounds_dir.resolve():
             path.unlink(missing_ok=True)
 
@@ -110,22 +114,23 @@ class UserData:
 def picker_command() -> list[str] | None:
     """The native file-open dialog of this system, as a command that prints the chosen path."""
     system = platform.system()
+    title, label = t("picker.title"), t("picker.filter")
     if system == "Windows":
         script = (
             "Add-Type -AssemblyName System.Windows.Forms;"
             "$d = New-Object System.Windows.Forms.OpenFileDialog;"
-            f"$d.Title = '{PICKER_TITLE}';"
-            "$d.Filter = 'Imagens|*.jpg;*.jpeg;*.png;*.bmp;*.webp';"
+            f"$d.Title = '{title}';"
+            f"$d.Filter = '{label}|*.jpg;*.jpeg;*.png;*.bmp;*.webp';"
             "if ($d.ShowDialog() -eq 'OK') { [Console]::OutputEncoding = [Text.Encoding]::UTF8; $d.FileName }"
         )
         return ["powershell", "-NoProfile", "-STA", "-Command", script]
     if system == "Darwin":
-        return ["osascript", "-e", f'POSIX path of (choose file of type {{"public.image"}} with prompt "{PICKER_TITLE}")']
+        return ["osascript", "-e", f'POSIX path of (choose file of type {{"public.image"}} with prompt "{title}")']
     patterns = " ".join(f"*{suffix} *{suffix.upper()}" for suffix in IMAGE_SUFFIXES)
     if shutil.which("zenity"):
-        return ["zenity", "--file-selection", f"--title={PICKER_TITLE}", f"--file-filter=Imagens | {patterns}"]
+        return ["zenity", "--file-selection", f"--title={title}", f"--file-filter={label} | {patterns}"]
     if shutil.which("kdialog"):
-        return ["kdialog", "--title", PICKER_TITLE, "--getopenfilename", str(Path.home()), patterns]
+        return ["kdialog", "--title", title, "--getopenfilename", str(Path.home()), patterns]
     return None
 
 
@@ -133,7 +138,7 @@ def pick_image_file() -> Path | None:
     """Blocking: run it off the video thread. None if cancelled."""
     command = picker_command()
     if command is None:
-        raise RuntimeError("Nenhuma janela de seleção de arquivo disponível (instale o zenity).")
+        raise RuntimeError(t("picker.missing"))
     flags = getattr(subprocess, "CREATE_NO_WINDOW", 0) if sys.platform == "win32" else 0
     result = subprocess.run(command, capture_output=True, text=True, encoding="utf-8", creationflags=flags)
     chosen = result.stdout.strip()

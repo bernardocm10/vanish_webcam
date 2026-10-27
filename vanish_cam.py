@@ -1,4 +1,4 @@
-"""Webcam locale: dissolvenza avviata dal gesto con indice e medio a V."""
+"""VanishCam: camera, background, keyboard, virtual webcam output and the video loop."""
 
 from __future__ import annotations
 
@@ -33,6 +33,7 @@ try:
     from .modes import MODES, FrameInfo, Mode
     from .call_audio import MIC_DESCRIPTION, CallSound, VirtualMic
     from .control_panel import ACCENTS, AMBER, FONT_DIR, FONTS, GREEN, MODE_CARDS, ControlPanel, PanelView
+    from .i18n import LANGUAGES, set_language, t
     from .user_data import Settings, UserData
 except ImportError:
     from naruto_effect import joined_hands_from_landmarks, load_log
@@ -44,6 +45,7 @@ except ImportError:
     from modes import MODES, FrameInfo, Mode
     from call_audio import MIC_DESCRIPTION, CallSound, VirtualMic
     from control_panel import ACCENTS, AMBER, FONT_DIR, FONTS, GREEN, MODE_CARDS, ControlPanel, PanelView
+    from i18n import LANGUAGES, set_language, t
     from user_data import Settings, UserData
 
 
@@ -71,11 +73,11 @@ MODEL_URLS = {
 CALIBRATION_SECONDS = 4.0
 BACKGROUND_SAMPLE_SECONDS = 0.55
 GESTURE_INTERVAL_SECONDS = 0.14
-# Regolarizzazione del guided filter (scala 0-255 della guida): piu' basso = bordi piu' fini.
+# Guided filter regularization (on the 0-255 guide scale): lower = finer edges.
 MASK_EDGE_EPS = 40.0
 BACKGROUND_UPDATE_SECONDS = 0.5
 BACKGROUND_UPDATE_RATE = 0.2
-# Guadagno di esposizione stimato dove la persona e' assente (serve almeno il 10% dell'immagine).
+# Exposure gain measured where the person is absent (needs at least 10% of the image).
 EXPOSURE_MIN_FREE_FRACTION = 0.1
 EXPOSURE_GAIN_RANGE = (0.5, 2.0)
 
@@ -94,57 +96,48 @@ class AppState:
 def positive_fps(value: str) -> float:
     fps = float(value)
     if not np.isfinite(fps) or not 1 <= fps <= 120:
-        raise argparse.ArgumentTypeError("Gli FPS devono essere compresi tra 1 e 120.")
+        raise argparse.ArgumentTypeError(t("cli.fps_range"))
     return fps
 
 
-def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(
-        description="Escolha Normal, Naruto, Goku ou Particles para a webcam."
-    )
-    parser.add_argument("--camera", type=int, default=0, help="Índice da webcam")
-    # 1280x720 e' il 16:9 nativo della maggior parte delle webcam (via MJPG):
-    # le videochiamate non devono stirare un 4:3.
-    parser.add_argument("--width", type=int, default=1280, help="Largura do vídeo")
-    parser.add_argument("--height", type=int, default=720, help="Altura do vídeo")
-    parser.add_argument(
-        "--fullscreen", action="store_true", help="Abre em tela cheia"
-    )
-    parser.add_argument(
-        "--no-mirror", action="store_true", help="Não espelha a webcam"
-    )
-    parser.add_argument("--fps", type=positive_fps, default=30.0, help="FPS máximo da saída virtual (padrão: 30)")
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    # --lang first: the help text itself must be in the chosen language.
+    language = argparse.ArgumentParser(add_help=False)
+    language.add_argument("--lang")
+    chosen, _ = language.parse_known_args(argv)
+    # An invalid value is reported by the full parser below.
+    if chosen.lang in LANGUAGES:
+        set_language(chosen.lang)
+
+    parser = argparse.ArgumentParser(description=t("cli.description"))
+    parser.add_argument("--camera", type=int, default=0, help=t("cli.camera"))
+    # 1280x720 is the native 16:9 of most webcams (through MJPG):
+    # video calls must not stretch a 4:3 picture.
+    parser.add_argument("--width", type=int, default=1280, help=t("cli.width"))
+    parser.add_argument("--height", type=int, default=720, help=t("cli.height"))
+    parser.add_argument("--fullscreen", action="store_true", help=t("cli.fullscreen"))
+    parser.add_argument("--no-mirror", action="store_true", help=t("cli.no_mirror"))
+    parser.add_argument("--fps", type=positive_fps, default=30.0, help=t("cli.fps"))
     parser.add_argument(
         "--virtual-camera", action=argparse.BooleanOptionalAction, default=None,
-        help="Exige a webcam virtual; por padrão ela é usada se existir. --no-virtual-camera desliga",
+        help=t("cli.virtual_camera"),
     )
     parser.add_argument(
         "--virtual-backend", choices=("obs", "unitycapture", "v4l2loopback"),
-        help="Driver da webcam virtual",
+        help=t("cli.virtual_backend"),
     )
-    parser.add_argument("--virtual-device", help="Nome do dispositivo virtual")
+    parser.add_argument("--virtual-device", help=t("cli.virtual_device"))
+    parser.add_argument("--mode", choices=tuple(MODES), help=t("cli.mode"))
+    parser.add_argument("--call-audio", action="store_true", help=t("cli.call_audio"))
+    parser.add_argument("--static-background", action="store_true", help=t("cli.static_background"))
     parser.add_argument(
-        "--mode", choices=tuple(MODES),
-        help="Efeito inicial (padrão: o último usado); dá para trocar no painel",
+        "--background-image", type=Path, metavar=t("cli.background_metavar"),
+        help=t("cli.background_image"),
     )
-    parser.add_argument(
-        "--call-audio", action="store_true",
-        help="Cria o microfone virtual 'VanishCam Mic' (voz + sons dos efeitos) para videochamadas",
-    )
-    parser.add_argument(
-        "--static-background", action="store_true",
-        help="Não atualiza o fundo depois da calibração (como nas versões antigas)",
-    )
-    parser.add_argument(
-        "--background-image", type=Path, metavar="ARQUIVO",
-        help="Imagem de fundo inicial (JPG/PNG; padrão: a última usada); dá para trocar no painel",
-    )
-    parser.add_argument(
-        "--gesture-debug", action="store_true",
-        help="Mostra no terminal o estado do reconhecimento do gesto (sem texto no vídeo)",
-    )
+    parser.add_argument("--gesture-debug", action="store_true", help=t("cli.gesture_debug"))
+    parser.add_argument("--lang", choices=LANGUAGES, help=t("cli.lang"))
     parser.add_argument("--self-test", action="store_true", help=argparse.SUPPRESS)
-    return parser.parse_args()
+    return parser.parse_args(argv)
 
 
 def open_virtual_camera(args: argparse.Namespace, width: int, height: int):
@@ -159,17 +152,12 @@ def open_virtual_camera(args: argparse.Namespace, width: int, height: int):
             backend=args.virtual_backend, device=args.virtual_device,
         )
     except (ImportError, RuntimeError, OSError, ValueError) as error:
-        message = (
-            "Webcam virtual indisponível. No Linux, carregue o v4l2loopback (veja o README); "
-            "no Windows, instale o OBS Studio (driver OBS Virtual Camera) ou o Unity Capture "
-            "e desligue a câmera virtual do OBS se estiver ligada. "
-            f"Detalhe: {error}"
-        )
+        message = t("virtual.unavailable", error=error)
         if args.virtual_camera is True or args.virtual_backend or args.virtual_device:
             raise RuntimeError(message) from error
-        print(f"[Webcam] {message}\n[Webcam] Continuando só com a janela de preview.")
+        print(f"[VanishCam] {message}\n[VanishCam] {t('virtual.preview_only')}")
         return None
-    print(f"[Webcam] Saída virtual ativa: {camera.device} ({width}x{height}, até {args.fps:g} FPS)")
+    print(f"[VanishCam] {t('virtual.active', device=camera.device, width=width, height=height, fps=args.fps)}")
     return camera
 
 
@@ -182,17 +170,17 @@ def send_virtual_frame(camera, frame: np.ndarray) -> None:
 def download_models(mode: str = "normal") -> None:
     MODEL_DIR.mkdir(parents=True, exist_ok=True)
     for destination, url in MODEL_URLS.items():
-        # Solo Normal usa il riconoscitore di gesti; gli altri usano mani e viso.
+        # Only Normal uses the gesture recognizer; the others use hands and face.
         if mode != "normal" and destination == GESTURE_MODEL:
             continue
         if destination.exists() and destination.stat().st_size > 100_000:
             continue
 
         temporary = destination.with_suffix(destination.suffix + ".part")
-        print(f"[Vanish Lab] Baixando {destination.name}...")
+        print(f"[VanishCam] {t('models.downloading', name=destination.name)}")
         try:
             request = urllib.request.Request(
-                url, headers={"User-Agent": "Vanish-Lab/1.0"}
+                url, headers={"User-Agent": "VanishCam/1.0"}
             )
             with urllib.request.urlopen(request, timeout=60) as response:
                 total = int(response.headers.get("Content-Length", 0))
@@ -208,10 +196,7 @@ def download_models(mode: str = "normal") -> None:
             os.replace(temporary, destination)
         except (OSError, urllib.error.URLError) as error:
             temporary.unlink(missing_ok=True)
-            raise RuntimeError(
-                "Não consegui baixar os modelos do MediaPipe. "
-                "Verifique a conexão com a internet e tente de novo."
-            ) from error
+            raise RuntimeError(t("models.download_failed")) from error
 
 
 def open_camera(index: int, width: int, height: int) -> cv2.VideoCapture:
@@ -224,12 +209,10 @@ def open_camera(index: int, width: int, height: int) -> cv2.VideoCapture:
         capture = cv2.VideoCapture(index)
 
     if not capture.isOpened():
-        raise RuntimeError(
-            f"Webcam {index} indisponível. Feche outros apps que usam a câmera ou tente --camera 1."
-        )
+        raise RuntimeError(t("camera.unavailable", index=index))
 
-    # Senza MJPG molte webcam USB danno 1280x720 solo a 10 FPS (YUYV) e
-    # OpenCV ripiega su 640x480.
+    # Without MJPG many USB webcams give 1280x720 at only 10 FPS (YUYV) and
+    # OpenCV falls back to 640x480.
     capture.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*"MJPG"))
     capture.set(cv2.CAP_PROP_FRAME_WIDTH, width)
     capture.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
@@ -253,7 +236,7 @@ def create_recognizer(
     if mode in ("goku", "particles"):
         for model in (HAND_MODEL, FACE_MODEL):
             if not model.is_file():
-                raise RuntimeError(f"Modelo não encontrado: {model}")
+                raise RuntimeError(t("models.missing", path=model))
         face_options = vision.FaceLandmarkerOptions(
             base_options=python.BaseOptions(model_asset_path=str(FACE_MODEL)),
             running_mode=vision.RunningMode.VIDEO,
@@ -280,7 +263,7 @@ def create_recognizer(
         return detector(face, hands)
     if mode == "naruto":
         if not HAND_MODEL.is_file():
-            raise RuntimeError(f"Modelo das mãos não encontrado: {HAND_MODEL}")
+            raise RuntimeError(t("models.missing", path=HAND_MODEL))
         options = vision.HandLandmarkerOptions(
             base_options=python.BaseOptions(model_asset_path=str(HAND_MODEL)),
             running_mode=vision.RunningMode.VIDEO,
@@ -331,8 +314,8 @@ def person_mask(
         return np.zeros((height, width), dtype=np.float32)
     raw = np.squeeze(result.confidence_masks[0].numpy_view()).astype(np.float32)
     if hasattr(cv2, "ximgproc"):
-        # Il guided filter fa aderire la maschera ai bordi reali (capelli, cuffie)
-        # ed elimina l'alone dello sfondo; a meta' risoluzione costa ~5 ms in 720p.
+        # The guided filter snaps the mask to real edges (hair, headphones) and removes
+        # the background halo; at half resolution it costs ~5 ms at 720p.
         half = (max(1, width // 2), max(1, height // 2))
         guide = cv2.resize(image.numpy_view(), half, interpolation=cv2.INTER_AREA)
         small = cv2.resize(raw, half, interpolation=cv2.INTER_LINEAR)
@@ -345,18 +328,18 @@ def person_mask(
 
 
 def load_background_image(path: Path) -> np.ndarray:
-    # imdecode legge anche percorsi con accenti su Windows, dove imread fallisce.
+    # imdecode also reads paths with accents on Windows, where imread fails.
     try:
         image = cv2.imdecode(np.fromfile(str(path), dtype=np.uint8), cv2.IMREAD_COLOR)
     except OSError:
         image = None
     if image is None:
-        raise RuntimeError(f"Não foi possível abrir a imagem de fundo: {path}")
+        raise RuntimeError(t("background.unreadable", path=path))
     return image
 
 
 def fit_background(image: np.ndarray, width: int, height: int) -> np.ndarray:
-    """Cobre todo o quadro sem distorcer: escala e corta o excesso no centro."""
+    """Cover the whole frame without distortion: scale, then crop the excess around the center."""
     src_height, src_width = image.shape[:2]
     scale = max(width / src_width, height / src_height)
     scaled_width = max(width, round(src_width * scale))
@@ -369,7 +352,7 @@ def fit_background(image: np.ndarray, width: int, height: int) -> np.ndarray:
 
 
 def replace_background(frame: np.ndarray, background: np.ndarray, mask: np.ndarray) -> np.ndarray:
-    """Mantém só a pessoa do frame e coloca a imagem escolhida atrás dela."""
+    """Keep only the person from the frame and put the chosen picture behind them."""
     alpha = mask[..., None]
     return (frame * alpha + background * (1.0 - alpha)).astype(np.uint8)
 
@@ -380,24 +363,24 @@ def update_background(
     mask: np.ndarray,
     rate: float = BACKGROUND_UPDATE_RATE,
 ) -> np.ndarray:
-    """Segui i cambi di luce senza ricalibrare e senza stampare la persona nello sfondo.
+    """Follow lighting changes without recalibrating and without printing the person into the background.
 
-    L'esposizione automatica della webcam cambia tutta l'immagine (una persona
-    davanti a una finestra la fa schiarire): quel guadagno, misurato dove la
-    persona e' assente, si applica a tutto lo sfondo, anche dietro la sagoma.
-    Altrimenti la zona coperta resta ferma alla calibrazione e, da invisibili,
-    appare come un'ombra della persona. Il frame si fonde poi solo lontano dalla
-    sagoma: il margine evita che bordi incerti (mani, capelli) restino stampati.
+    The webcam's auto exposure changes the whole image (a person in front of a
+    window brightens it): that gain, measured where the person is absent, is
+    applied to the whole background, also behind the silhouette. Otherwise the
+    covered area stays as it was at calibration and, once invisible, shows up as
+    a shadow of the person. The frame is then blended in only away from the
+    silhouette: the margin keeps uncertain edges (hands, hair) from being printed.
     """
     height, width = mask.shape
     small_size = (max(1, width // 4), max(1, height // 4))
     occupied = (cv2.resize(mask, small_size, interpolation=cv2.INTER_AREA) > 0.05).astype(np.uint8)
-    # Margine di almeno il 4% della larghezza attorno alla sagoma.
+    # A margin of at least 4% of the width around the silhouette.
     grow = 2 * max(1, int(np.ceil(small_size[0] * 0.04))) + 1
     occupied = cv2.dilate(occupied, np.ones((grow, grow), np.uint8))
     hard_free = 1.0 - occupied.astype(np.float32)
     background = apply_exposure_gain(background, frame, hard_free > 0, small_size)
-    # La sfumatura resta tutta fuori dal margine: dentro il peso e' zero.
+    # The feathering stays entirely outside the margin: inside it the weight is zero.
     free = cv2.GaussianBlur(hard_free, (0, 0), sigmaX=grow / 3.0) * hard_free
     weight = cv2.resize(free, (width, height), interpolation=cv2.INTER_NEAREST) * rate
     return cv2.blendLinear(frame, background, weight, 1.0 - weight)
@@ -409,10 +392,10 @@ def apply_exposure_gain(
     free: np.ndarray,
     small_size: tuple[int, int],
 ) -> np.ndarray:
-    """Porta tutto lo sfondo all'esposizione attuale, canale per canale."""
+    """Bring the whole background to the current exposure, channel by channel."""
     small_bg = cv2.resize(background, small_size, interpolation=cv2.INTER_AREA).astype(np.float32)
     small_frame = cv2.resize(frame, small_size, interpolation=cv2.INTER_AREA).astype(np.float32)
-    # Pixel saturi o quasi neri non dicono nulla sul guadagno.
+    # Saturated or nearly black pixels say nothing about the gain.
     valid = free & (small_bg.max(axis=2) < 250) & (small_frame.max(axis=2) < 250) & (small_bg.min(axis=2) > 8)
     if np.count_nonzero(valid) < max(16, valid.size * EXPOSURE_MIN_FREE_FRACTION):
         return background
@@ -424,7 +407,7 @@ def apply_exposure_gain(
 
 
 def victory_landmark_score(points: np.ndarray) -> float:
-    """Riconosci indice e medio distesi usando distanze 3D, non l'orientamento."""
+    """Recognize extended index and middle fingers from 3D distances, not orientation."""
     if points.shape != (21, 3) or not np.isfinite(points).all():
         return 0.0
 
@@ -432,7 +415,7 @@ def victory_landmark_score(points: np.ndarray) -> float:
     extended = []
     folded = []
     lengths = []
-    # MCP, PIP, DIP e punta: indice, medio, anulare, mignolo.
+    # MCP, PIP, DIP and tip: index, middle, ring, little finger.
     for index, base in enumerate((5, 9, 13, 17)):
         finger = points[base : base + 4]
         length = float(np.linalg.norm(np.diff(finger, axis=0), axis=1).sum())
@@ -452,19 +435,19 @@ def victory_landmark_score(points: np.ndarray) -> float:
         extended.append(ratio >= 0.82 and tip_distance > joint_distance * 1.10)
         folded.append(ratio < 0.78 or tip_distance <= joint_distance * 1.05)
 
-    # Di lato le dita ripiegate possono apparire dritte ma molto corte:
-    # non pretendere articolazioni ben visibili per anulare e mignolo.
+    # Seen from the side, folded fingers can look straight but very short:
+    # do not require clearly visible joints for the ring and little fingers.
     reference_length = min(lengths[:2])
     for index, base in ((2, 13), (3, 17)):
         reach = float(np.linalg.norm(points[base + 3] - points[base]))
         folded[index] = folded[index] or reach < reference_length * 0.65
     if not (extended[0] and extended[1] and folded[2] and folded[3]):
         return 0.0
-    # Le due punte devono essere separate; il pollice puo' restare nascosto.
+    # The two tips must be apart; the thumb may stay hidden.
     separation = float(np.linalg.norm(points[8] - points[12]))
     if separation < min(lengths[:2]) * 0.20:
         return 0.0
-    # Qualita' geometrica delle dita distese, non probabilita' del classificatore.
+    # Geometric quality of the extended fingers, not the classifier's probability.
     return float(np.clip(min(straightness[:2]), 0.0, 1.0))
 
 
@@ -472,15 +455,15 @@ def classify_gesture_result(
     result: vision.GestureRecognizerResult,
     image: mp.Image,
 ) -> tuple[str, float]:
-    # I landmark vengono restituiti anche quando il classificatore non riconosce
-    # "Victory" (ad esempio con il dorso della mano rivolto alla webcam).
+    # Landmarks are returned even when the classifier does not recognize
+    # "Victory" (for example with the back of the hand facing the webcam).
     for landmarks in result.hand_world_landmarks:
         points = np.array([(point.x, point.y, point.z) for point in landmarks])
         score = victory_landmark_score(points)
         if score:
             return "Victory", score
-    # Controlla SEMPRE anche la geometria visibile: la profondita' stimata
-    # puo' essere imprecisa quando palmo e dita piegate sono nascosti.
+    # ALWAYS check the visible geometry too: the estimated depth can be
+    # inaccurate when the palm and the folded fingers are hidden.
     for landmarks in result.hand_landmarks:
         points = np.array([(point.x * image.width, point.y * image.height, 0.0)
                            for point in landmarks])
@@ -497,7 +480,7 @@ def classify_gesture_result(
 
 
 class MultiViewGestureRecognizer:
-    """Riprova la rilevazione su fotogrammi ruotati senza alterare il tracking."""
+    """Retry detection on rotated frames without disturbing the tracking."""
 
     def __init__(self, primary, alternate):
         self.primary = primary
@@ -517,13 +500,13 @@ class MultiViewGestureRecognizer:
         if timestamp_ms < self.next_retry_ms:
             return best
 
-        # IMAGE forza una nuova rilevazione; il modello VIDEO resta sul frame
-        # originale. Evita timestamp/tracking incoerenti tra rotazioni diverse.
+        # IMAGE forces a fresh detection; the VIDEO model stays on the original
+        # frame. This avoids inconsistent timestamps/tracking across rotations.
         rgb = image.numpy_view()
         height, width = rgb.shape[:2]
-        # Il palmo nella posa laterale e' spesso troppo piccolo nel frame
-        # completo. I due ritagli inferiori si sovrappongono e coprono entrambe
-        # le mani, anche quando l'immagine e' specchiata.
+        # In the side pose the palm is often too small in the full frame. The
+        # two lower crops overlap and cover both hands, even when the image is
+        # mirrored.
         crops = {
             "full": rgb,
             "lower_left": rgb[int(height * 0.28):, :int(width * 0.78)],
@@ -630,17 +613,17 @@ class MultiViewHandLandmarker:
 
 
 class GokuPoseDetector:
-    """Fronte dal Face Landmarker e dita dal Hand Landmarker sullo stesso frame."""
+    """Forehead from the Face Landmarker and fingers from the Hand Landmarker, on the same frame."""
 
     FACE_MEMORY_MS = 1000
-    # Quale zona del viso serve e quale posa della mano la deve toccare.
+    # Which area of the face is needed and which hand pose must touch it.
     reference = staticmethod(face_reference)
     pose = staticmethod(forehead_fingers_pose)
 
     def __init__(self, face, hands):
         self.face = face
         self.hands = hands
-        # Le dita sulla fronte coprono parte del viso: ricorda l'ultima fronte vista.
+        # Fingers on the forehead hide part of the face: remember the last forehead seen.
         self.last_face = None
         self.last_face_ms = -self.FACE_MEMORY_MS
         self.face_visible = False
@@ -669,17 +652,17 @@ class GokuPoseDetector:
 
 
 class SalutePoseDetector(GokuPoseDetector):
-    """Continenza: mano tesa con le dita unite sulla fronte o sulle sopracciglia."""
+    """Salute: a flat hand with the fingers together on the forehead or the brow."""
 
     reference = staticmethod(salute_reference)
     pose = staticmethod(salute_pose)
 
 
 class AsyncRecognizer:
-    """Riconosce il gesto in un thread: il video non aspetta i modelli (30-200 ms).
+    """Recognize the gesture in a thread: the video never waits for the models (30-200 ms).
 
-    detect(image, timestamp_ms) gira solo nel thread; il loop consegna al massimo
-    un frame alla volta e legge l'ultimo risultato quando e' pronto.
+    detect(image, timestamp_ms) runs only in the thread; the loop hands over at most
+    one frame at a time and reads the latest result when it is ready.
     """
 
     def __init__(self, detect: Callable[[mp.Image, int], object], close: Callable[[], None]):
@@ -705,10 +688,10 @@ class AsyncRecognizer:
         self.wake.set()
 
     def take_result(self) -> tuple[object, int] | None:
-        """Ultimo risultato non ancora letto, oppure None."""
+        """The latest result not read yet, or None."""
         with self.lock:
             if self.error is not None:
-                raise RuntimeError(f"O reconhecimento do gesto falhou: {self.error}") from self.error
+                raise RuntimeError(t("gesture.failed", error=self.error)) from self.error
             result, self.result = self.result, None
             return result
 
@@ -744,9 +727,9 @@ class AsyncRecognizer:
 
 
 class PersonSegmenter:
-    """Una sola segmentazione per frame: MediaPipe VIDEO rifiuta timestamp ripetuti.
+    """One segmentation per frame: MediaPipe VIDEO rejects repeated timestamps.
 
-    Effetto e aggiornamento dello sfondo condividono cosi' la stessa maschera.
+    This way the effect and the background update share the same mask.
     """
 
     def __init__(self, segmenter: vision.ImageSegmenter):
@@ -768,16 +751,16 @@ def detection_function(mode: str, recognizer) -> Callable[[mp.Image, int], objec
         return recognizer.recognize_joined_hands
     if mode in ("goku", "particles"):
         return recognizer.recognize_pose
-    # Cercata a ogni chiamata (non legata qui) cosi' i test possono sostituirla.
+    # Looked up on every call (not bound here) so the tests can replace it.
     return lambda image, timestamp_ms: recognize_gesture(recognizer, image, timestamp_ms)
 
 
 def detector_status(recognizer, result) -> str:
-    """Una riga di diagnostica per --gesture-debug, solo nel terminale."""
-    details = [f"resultado={result}"]
+    """One diagnostic line for --gesture-debug, in the terminal only."""
+    details = [f"result={result}"]
     for label, attribute in (
-        ("recorte", "preferred_crop"), ("rotacao", "preferred_rotation"),
-        ("vista", "preferred_view"), ("maos", "last_hand_count"), ("rosto", "face_visible"),
+        ("crop", "preferred_crop"), ("rotation", "preferred_rotation"),
+        ("view", "preferred_view"), ("hands", "last_hand_count"), ("face", "face_visible"),
     ):
         if hasattr(recognizer, attribute):
             details.append(f"{label}={getattr(recognizer, attribute)}")
@@ -805,13 +788,13 @@ def self_test() -> int:
     required = (SEGMENTER_MODEL, GESTURE_MODEL, HAND_MODEL, FACE_MODEL, SOUND_PATH, *fonts)
     missing = [path.name for path in required if not path.is_file()]
     if missing:
-        raise RuntimeError(f"Arquivos faltando: {', '.join(missing)}")
+        raise RuntimeError(t("selftest.missing", files=", ".join(missing)))
     load_log()
     import pygame.mixer  # The distributed build must contain its MP3 decoder.
     create_segmenter().close()
     for mode in MODES:
         create_recognizer(mode).close()
-    print("[Webcam] Autoteste concluído: modelos, imagens e áudio presentes.")
+    print(f"[VanishCam] {t('selftest.ok')}")
     return 0
 
 
@@ -819,8 +802,8 @@ def run() -> int:
     args = parse_args()
     if getattr(args, "self_test", False):
         return self_test()
-    # Chiudere il terminale (SIGHUP) o un kill (SIGTERM) diventano un'uscita
-    # normale: webcam, finestre e microfono virtuale vengono rilasciati.
+    # Closing the terminal (SIGHUP) or a kill (SIGTERM) become a normal exit:
+    # the webcam, the windows and the virtual microphone are released.
     for name in ("SIGTERM", "SIGHUP"):
         if hasattr(signal, name):
             signal.signal(getattr(signal, name), stop_on_signal)
@@ -838,11 +821,11 @@ def open_call_mic(args: argparse.Namespace, resources: ExitStack) -> VirtualMic 
     try:
         mic = VirtualMic()
     except (OSError, RuntimeError, subprocess.SubprocessError) as error:
-        # Il video conta piu' dell'audio: avvisa e continua senza microfono virtuale.
-        print(f"[Chamada] Microfone virtual indisponível: {error}")
+        # Video matters more than audio: warn and carry on without the virtual microphone.
+        print(f"[VanishCam Mic] {t('mic.unavailable', error=error)}")
         return None
     resources.callback(mic.close)
-    print(f"[Chamada] Microfone virtual ativo: no Teams escolha '{MIC_DESCRIPTION}'.")
+    print(f"[VanishCam Mic] {t('mic.active', name=MIC_DESCRIPTION)}")
     return mic
 
 
@@ -852,13 +835,13 @@ def open_sound(mode: str, mic: VirtualMic | None = None):
     elif mode == "goku":
         path = sound_path()
         if path is None:
-            print(f"[Goku] Sem som: coloque {GOKU_SOUND_NAME} em assets/ para ativar.")
+            print(f"[Goku] {t('goku.no_sound', name=GOKU_SOUND_NAME)}")
             return None
-        print(f"[Goku] Som: {path.name}")
+        print(f"[Goku] {t('goku.sound', name=path.name)}")
     else:
         return None
     sound = VanishSound(path) if mode == "goku" else VanishSound()
-    # Con il microfono virtuale l'effetto si sente anche nella chiamata.
+    # With the virtual microphone the effect is heard in the call too.
     return CallSound(sound, mic, path) if mic is not None else sound
 
 
@@ -900,13 +883,10 @@ MESSAGE_SECONDS = 6.0
 
 def panel_status(phase: str, mode: Mode, calibration_remaining: int | None) -> tuple[str, tuple[int, int, int]]:
     if phase == "calibrating":
-        return f"Capturando o fundo: saia da câmera ({calibration_remaining or 0} s)", AMBER
-    accent = ACCENTS.get(mode.name, GREEN)
-    return {
-        "vanishing": ("Sumindo…", accent),
-        "vanished": ("Invisível", accent),
-        "appearing": ("Reaparecendo…", accent),
-    }.get(mode.phase, ("Pronto: faça o gesto", GREEN))
+        return t("status.calibrating", seconds=calibration_remaining or 0), AMBER
+    if mode.phase in ("vanishing", "vanished", "appearing"):
+        return t(f"status.{mode.phase}"), ACCENTS.get(mode.name, GREEN)
+    return t("status.ready"), GREEN
 
 
 def run_camera(args: argparse.Namespace, resources: ExitStack, mode_name: str | None = None) -> int:
@@ -914,7 +894,7 @@ def run_camera(args: argparse.Namespace, resources: ExitStack, mode_name: str | 
     saved = user_data.load()
     mode_name = mode_name or (saved.mode if saved.mode in MODES else "normal")
     chosen: Path | None = None
-    background_source: np.ndarray | None = None  # Immagine scelta, a risoluzione originale.
+    background_source: np.ndarray | None = None  # Chosen picture, at its original resolution.
     if getattr(args, "background_image", None) is not None:
         chosen = Path(args.background_image)
         background_source = load_background_image(chosen)
@@ -923,7 +903,7 @@ def run_camera(args: argparse.Namespace, resources: ExitStack, mode_name: str | 
             background_source = load_background_image(saved.background)
             chosen = saved.background
         except RuntimeError as error:
-            print(f"[Webcam] {error}")
+            print(f"[VanishCam] {error}")
     user_data.save(Settings(mode_name, chosen))
     gallery = tuple(user_data.gallery())
 
@@ -936,10 +916,10 @@ def run_camera(args: argparse.Namespace, resources: ExitStack, mode_name: str | 
     segment = PersonSegmenter(segmenter)
     mic = open_call_mic(args, resources)
     effect = EffectRuntime(mode_name, segment, mic)
-    # Chiude l'effetto attivo in quel momento, anche dopo un cambio di modo.
+    # Closes whichever effect is active at that point, also after a mode switch.
     resources.callback(lambda: effect.close())
     resources.callback(cv2.destroyAllWindows)
-    # GUI_NORMAL: solo il video, senza la barra degli strumenti di Qt.
+    # GUI_NORMAL: just the video, without the Qt toolbar.
     cv2.namedWindow(WINDOW_NAME, cv2.WINDOW_NORMAL | cv2.WINDOW_KEEPRATIO | cv2.WINDOW_GUI_NORMAL)
     cv2.resizeWindow(WINDOW_NAME, args.width, args.height)
     panel = ControlPanel()
@@ -950,7 +930,7 @@ def run_camera(args: argparse.Namespace, resources: ExitStack, mode_name: str | 
         set_fullscreen(True)
 
     background: np.ndarray | None = None
-    real_background: np.ndarray | None = None  # Ultimo sfondo reale: torna senza ricalibrare.
+    real_background: np.ndarray | None = None  # Last real background: switching back needs no recalibration.
     background_samples: list[np.ndarray] = []
     virtual_camera = None
     virtual_camera_initialized = False
@@ -960,17 +940,17 @@ def run_camera(args: argparse.Namespace, resources: ExitStack, mode_name: str | 
     started = state.calibration_started
     width = height = 0
     if background_source is None:
-        print("[Webcam] Saia da frente da câmera por 4 segundos: capturando o fundo.")
+        print(f"[VanishCam] {t('loop.step_out')}")
     else:
-        # L'immagine e' lo sfondo: niente calibrazione.
+        # The picture is the background: no calibration.
         state.phase = "running"
-        print(f"[Webcam] Fundo: {chosen}")
-    print(f"[{effect.mode.name.capitalize()}] {effect.mode.instructions}")
-    print("[Webcam] Troque efeito e fundo no painel 'VanishCam' (ou teclas 1-4). Q fecha.")
+        print(f"[VanishCam] {t('loop.background_file', path=chosen)}")
+    print(f"[{effect.mode.title}] {effect.mode.instructions}")
+    print(f"[VanishCam] {t('loop.panel_hint', count=len(MODE_CARDS))}")
 
     def notify(text: str, now: float) -> None:
         nonlocal message, message_until
-        print(f"[Webcam] {text}")
+        print(f"[VanishCam] {text}")
         message, message_until = text, now + MESSAGE_SECONDS
 
     def start_calibration(now: float) -> None:
@@ -980,23 +960,23 @@ def run_camera(args: argparse.Namespace, resources: ExitStack, mode_name: str | 
         background_samples.clear()
         calibration_remaining = None
         effect.mode.reset()
-        print("[Webcam] Saia da frente da câmera por 4 segundos: capturando o novo fundo.")
+        print(f"[VanishCam] {t('loop.step_out_again')}")
 
     def switch_mode(name: str) -> None:
         nonlocal effect
         if name == effect.name or name not in MODES:
             return
         previous = effect.name
-        # Prima chiudere: il vecchio suono possiede il mixer audio condiviso.
+        # Close first: the old sound owns the shared audio mixer.
         effect.close()
         try:
             effect = EffectRuntime(name, segment, mic)
         except Exception as error:
             effect = EffectRuntime(previous, segment, mic)
-            notify(f"Não consegui abrir o modo {name}: {error}", time.perf_counter())
+            notify(t("loop.mode_failed", name=name, error=error), time.perf_counter())
             return
         user_data.save(Settings(name, chosen))
-        print(f"[{effect.mode.name.capitalize()}] {effect.mode.instructions}")
+        print(f"[{effect.mode.title}] {effect.mode.instructions}")
 
     def choose_background(path: Path | None, now: float) -> None:
         nonlocal chosen, background_source, background
@@ -1033,7 +1013,7 @@ def run_camera(args: argparse.Namespace, resources: ExitStack, mode_name: str | 
                 load_background_image(action[1])
                 imported = user_data.import_image(action[1])
             except (OSError, RuntimeError, ValueError) as error:
-                notify(f"Imagem não adicionada: {error}", now)
+                notify(t("loop.image_not_added", error=error), now)
                 return
             gallery = tuple(user_data.gallery())
             choose_background(imported, now)
@@ -1058,16 +1038,16 @@ def run_camera(args: argparse.Namespace, resources: ExitStack, mode_name: str | 
         while True:
             ok, frame = capture.read()
             if not ok:
-                raise RuntimeError("A webcam parou de enviar imagens.")
+                raise RuntimeError(t("camera.stopped"))
 
             if not args.no_mirror:
                 frame = cv2.flip(frame, 1)
 
             height, width = frame.shape[:2]
             if not virtual_camera_initialized:
-                # La webcam puo' non supportare la risoluzione chiesta: adatta la
-                # finestra a quella reale, senza stirare l'immagine.
-                print(f"[Webcam] Resolução: {width}x{height}")
+                # The webcam may not support the requested resolution: fit the
+                # window to the real one, without stretching the image.
+                print(f"[VanishCam] {t('camera.resolution', width=width, height=height)}")
                 if (width, height) != (args.width, args.height):
                     cv2.resizeWindow(WINDOW_NAME, width, height)
                 virtual_camera = open_virtual_camera(args, width, height)
@@ -1081,14 +1061,14 @@ def run_camera(args: argparse.Namespace, resources: ExitStack, mode_name: str | 
             camera_frame = frame
             mode = effect.mode
             if background_source is not None:
-                # La maschera resta in cache per questo timestamp: gli effetti la riusano.
+                # The mask stays cached for this timestamp: the effects reuse it.
                 frame = replace_background(frame, background, segment(frame, elapsed_ms))
 
             if state.phase == "calibrating":
                 elapsed = now - state.calibration_started
                 remaining = max(0, int(np.ceil(CALIBRATION_SECONDS - elapsed)))
                 if remaining != calibration_remaining:
-                    print(f"[Webcam] Capturando o fundo: {remaining} s.")
+                    print(f"[VanishCam] {t('loop.capturing', seconds=remaining)}")
                     calibration_remaining = remaining
                 if elapsed >= CALIBRATION_SECONDS - BACKGROUND_SAMPLE_SECONDS:
                     background_samples.append(frame.copy())
@@ -1103,7 +1083,7 @@ def run_camera(args: argparse.Namespace, resources: ExitStack, mode_name: str | 
                     panel.set_real_background(background)
                     state.phase = "running"
                     mode.reset()
-                    print("[Webcam] Fundo pronto. Pode voltar para a frente da câmera.")
+                    print(f"[VanishCam] {t('loop.background_ready')}")
                 display = frame
 
             else:
@@ -1118,11 +1098,11 @@ def run_camera(args: argparse.Namespace, resources: ExitStack, mode_name: str | 
                 if detected is not None and mode.detecting:
                     mode.on_detection(detected[0], now)
                     if args.gesture_debug and now - last_gesture_report >= 1.0:
-                        print(f"[Gesto] {detector_status(effect.recognizer, detected[0])}")
+                        print(f"[Gesture] {detector_status(effect.recognizer, detected[0])}")
                         last_gesture_report = now
                 display = mode.render(FrameInfo(frame, background, now, elapsed_ms))
 
-                # Lo sfondo segue luce e piccoli spostamenti, anche da invisibili.
+                # The background follows light and small movements, even while invisible.
                 if (
                     not args.static_background
                     and background_source is None
@@ -1166,7 +1146,7 @@ def main() -> int:
     except KeyboardInterrupt:
         return 0
     except Exception as error:
-        print(f"\n[Vanish Lab] ERRO: {error}", file=sys.stderr)
+        print(f"\n[VanishCam] {t('error', error=error)}", file=sys.stderr)
         return 1
 
 

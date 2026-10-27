@@ -28,6 +28,7 @@ try:
         EFFECT_SECONDS as PARTICLES_EFFECT_SECONDS, SALUTE_HOLD_SECONDS, ParticleCloud, make_particles,
         render_particles,
     )
+    from .i18n import t
 except ImportError:
     from goku_effect import (
         EFFECT_SECONDS as GOKU_EFFECT_SECONDS, HoldTracker, make_speed_lines,
@@ -43,9 +44,10 @@ except ImportError:
         EFFECT_SECONDS as PARTICLES_EFFECT_SECONDS, SALUTE_HOLD_SECONDS, ParticleCloud, make_particles,
         render_particles,
     )
+    from i18n import t
 
 
-# frame BGR, timestamp in ms -> maschera della persona (0..1) a piena risoluzione.
+# BGR frame, timestamp in ms -> person mask (0..1) at full resolution.
 Segment = Callable[[np.ndarray, int], np.ndarray]
 
 
@@ -62,16 +64,23 @@ class Mode:
 
     name = ""
     detect_interval = 0.14
-    # V e R funzionano da tastiera; Goku li disattiva: conta solo il gesto.
+    # V and R work from the keyboard; Goku turns them off: only the gesture counts.
     manual_keys = True
     detect_while_vanished = False
-    instructions = ""
 
     def __init__(self, segment: Segment, sound=None):
         self.segment = segment
         self.sound = sound
         self.phase = "ready"
         self.started: float | None = None
+
+    @property
+    def title(self) -> str:
+        return t(f"mode.{self.name}.title")
+
+    @property
+    def instructions(self) -> str:
+        return t(f"mode.{self.name}.instructions")
 
     @property
     def detecting(self) -> bool:
@@ -109,14 +118,13 @@ class VSignMode(Mode):
 
     def on_detection(self, result, now: float) -> None:
         name, score = result
-        # Avvia al primo riconoscimento affidabile della V.
+        # Start at the first reliable recognition of the V.
         if self.phase == "ready" and name == "Victory" and score >= 0.62:
             self.vanish(now)
 
 
 class NormalMode(VSignMode):
     name = "normal"
-    instructions = "Faça um V com indicador e médio: você se dissolve."
 
     def __init__(self, segment: Segment, sound=None):
         super().__init__(segment, sound)
@@ -137,7 +145,7 @@ class NormalMode(VSignMode):
         height, width = info.frame.shape[:2]
         if self.fields is None or self.fields[0].shape != (height, width):
             self.fields = make_dissolve_fields(height, width)
-        # La sagoma si aggiorna a 20 Hz durante la dissolvenza.
+        # The silhouette updates at 20 Hz during the dissolve.
         if self.mask is None or info.now - self.mask_at >= 0.05:
             self.mask = self.segment(info.frame, info.timestamp_ms)
             self.mask_at = info.now
@@ -150,7 +158,7 @@ class NormalMode(VSignMode):
 
 def half_resolution_rgb(frame: np.ndarray) -> np.ndarray:
     height, width = frame.shape[:2]
-    # Viso e mani non richiedono il 720p: meta' risoluzione basta.
+    # Face and hands do not need 720p: half resolution is enough.
     if width > 800:
         frame = cv2.resize(frame, (width // 2, height // 2), interpolation=cv2.INTER_AREA)
     return cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
@@ -159,7 +167,6 @@ def half_resolution_rgb(frame: np.ndarray) -> np.ndarray:
 class ParticlesMode(Mode):
     name = "particles"
     detect_interval = 0.066
-    instructions = "Bata continência (mão reta, dedos unidos na testa) por um instante: você vira fragmentos no vento."
 
     def __init__(self, segment: Segment, sound=None):
         super().__init__(segment, sound)
@@ -170,7 +177,7 @@ class ParticlesMode(Mode):
         return half_resolution_rgb(frame)
 
     def on_detection(self, saluting, now: float) -> None:
-        # Dopo R bisogna abbassare la mano prima di poter sparire di nuovo.
+        # After R the hand must come down before vanishing again.
         if self.hold.update(bool(saluting), now) and self.phase == "ready":
             self.vanish(now)
 
@@ -187,7 +194,7 @@ class ParticlesMode(Mode):
             return info.frame
         if self.phase == "vanished":
             return info.background
-        # Sagoma catturata una sola volta: niente segmentazione durante il volo.
+        # Silhouette captured once: no segmentation while the fragments fly.
         if self.cloud is None:
             self.cloud = make_particles(info.frame, self.segment(info.frame, info.timestamp_ms))
         elapsed = info.now - self.started
@@ -201,7 +208,6 @@ class ParticlesMode(Mode):
 class NarutoMode(Mode):
     name = "naruto"
     detect_interval = 0.08
-    instructions = "Junte as palmas (pulsos encostados) e segure um instante: fumaça e tronco."
 
     def __init__(self, segment: Segment, sound=None):
         super().__init__(segment, sound)
@@ -213,7 +219,7 @@ class NarutoMode(Mode):
         self.hold = HoldTracker(hold_seconds=NARUTO_HOLD_SECONDS, grace_seconds=0.3)
 
     def on_detection(self, joined, now: float) -> None:
-        # Dopo R bisogna separare le mani prima di poter sparire di nuovo.
+        # After R the hands must separate before vanishing again.
         if self.hold.update(bool(joined), now) and self.phase == "ready":
             self.vanish(now)
 
@@ -242,7 +248,7 @@ class NarutoMode(Mode):
                     overlay_log(self.vanished_frame, self.log_sprite, landed, cache=self.log_cache)
             return self.vanished_frame
         age = max(0.04, info.now - self.started)
-        # La sagoma serve solo mentre la persona e' ancora visibile.
+        # The silhouette is needed only while the person is still visible.
         if self.anchor is None or age < 0.13:
             self.mask = self.segment(info.frame, info.timestamp_ms)
             if self.anchor is None:
@@ -261,7 +267,6 @@ class GokuMode(Mode):
     detect_interval = 0.066
     manual_keys = False
     detect_while_vanished = True
-    instructions = "Indicador e médio juntos na testa por 1 segundo: você some. Repita para reaparecer."
 
     def __init__(self, segment: Segment, sound=None):
         super().__init__(segment, sound)
@@ -280,7 +285,7 @@ class GokuMode(Mode):
         remaining = self.hold.remaining(now)
         countdown = None if remaining is None else int(np.ceil(remaining * 4))
         if countdown is not None and countdown != self.countdown:
-            print(f"[Goku] Segure a pose: {remaining:.2f}s")
+            print(f"[Goku] {t('goku.hold', seconds=remaining)}")
         self.countdown = countdown
         if not fired:
             return
@@ -326,7 +331,7 @@ class GokuMode(Mode):
             self.mask = None
             self.mask_at = float("-inf")
             if vanishing:
-                print("[Goku] Sumiu. Abaixe a mão e repita o gesto para reaparecer.")
+                print(f"[Goku] {t('goku.vanished')}")
         return display
 
 
