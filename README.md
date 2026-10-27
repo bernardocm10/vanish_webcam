@@ -16,9 +16,20 @@ The published EXE may predate the Particles and Goku modes. To use them now, run
 
 ## Getting started
 
-1. Double-click `AVVIA_LOCALE.bat`.
-2. In the start menu, choose **Normal Vanish**, **Naruto Vanish**, **Goku**, or **Particles** with the mouse or the `1`, `2`, `3`, and `4` keys.
-3. Step out of the camera frame for 4 seconds while the background is captured. The terminal tells you when you can step back in.
+1. Double-click `AVVIA_LOCALE.bat`. Two windows open: the video preview and the **VanishCam** control panel.
+2. Step out of the camera frame for 4 seconds while the background is captured. The panel tells you when you can step back in.
+3. In the panel, pick an effect (**Normal**, **Naruto**, **Goku**, or **Partículas**) and a background. You can switch either at any time without closing the app.
+
+### Control panel
+
+The panel sits next to the video, so the preview and the virtual camera still show only the video.
+
+- **Efeito:** click a card, or press `1`–`4`, to switch effect. The camera, the virtual webcam, the call microphone, and the background stay as they are. There is no new calibration.
+- **Fundo:** **Fundo real** is your room; the other tiles are your images. **+ Adicionar** opens the system file picker and copies the image into the gallery (up to 7, oldest removed first). Hover over an image and click **×** to remove it from the gallery (the original file is never touched). Going back to **Fundo real** reuses the background already captured; it only asks you to step out of the frame if it was never captured in this session.
+- **Controles:** **Sumir** (`V`), **Reaparecer** (`R`), **Novo fundo** (`SPACE`, only with the real background), and **Tela cheia** (`F`). Sumir and Reaparecer are disabled in Goku mode.
+- The line at the top shows what is happening: capturing the background, ready, vanishing, or invisible.
+
+The app remembers the last effect and background and starts with them next time. They are stored in `~/.config/vanishcam/` on Linux and `%APPDATA%\VanishCam\` on Windows. Closing the panel or pressing `Q` quits the app.
 
 **Normal Vanish:** Raise your index and middle fingers in a V sign. The dissolve starts as soon as the gesture is recognized and lasts about 3.6 seconds.
 
@@ -28,7 +39,7 @@ The published EXE may predate the Particles and Goku modes. To use them now, run
 
 **Naruto Vanish:** Bring your palms together in front of the webcam, with your fingers side by side rather than interlaced. Keep both hands visible. As soon as the gesture is recognized, you vanish in a cloud of smoke and a wooden log appears, falls, and remains visible until you press `R`. No microphone is needed. Naruto mode uses `hand_landmarker.task` to track both hands. `assets/vanish.MP3` plays through your computer speakers when the disappearance starts, including when triggered with `V`. You can trigger it again after pressing `R`.
 
-To start a mode without the menu:
+To start with a specific effect regardless of the last one used:
 
 ```powershell
 local_app\AVVIA_LOCALE.bat --mode naruto
@@ -46,7 +57,7 @@ sudo modprobe v4l2loopback devices=1 video_nr=10 exclusive_caps=1 card_label="Va
 ./teams.sh --mode goku
 ```
 
-To get a **VanishCam** entry in the GNOME app menu, run `./install-launcher.sh` once. The entry runs `vanishcam-launcher.sh`, which asks for your password in a system dialog only when the virtual webcam is missing (after a reboot). It then opens a file picker for an optional background image (press **Cancel** to keep your real background; requires `zenity`, preinstalled on GNOME) and finally the mode menu.
+To get a **VanishCam** entry in the GNOME app menu, run `./install-launcher.sh` once. The entry runs `vanishcam-launcher.sh`, which asks for your password in a system dialog only when the virtual webcam is missing (after a reboot). It then opens the app with its control panel. The **+ Adicionar** button in the panel uses `zenity` (preinstalled on GNOME) or `kdialog` for the file picker.
 
 In Teams, choose **VanishCam** under **Settings → Devices → Camera**. Start the app before joining the call, and turn off Teams' own background effects.
 
@@ -66,7 +77,7 @@ OBS has only one virtual camera. Do not use it as both an OBS input and output a
 
 ## Custom background image
 
-To replace your real background with a picture, pass `--background-image` with a JPG or PNG file:
+The easiest way is the **Fundo** section of the control panel. To start with a specific image from the command line instead, pass `--background-image` with a JPG or PNG file:
 
 ```powershell
 local_app\AVVIA_LOCALE.bat --mode normal --background-image C:\Users\me\Pictures\beach.jpg
@@ -76,10 +87,13 @@ local_app\AVVIA_LOCALE.bat --mode normal --background-image C:\Users\me\Pictures
 ./teams.sh --mode goku --background-image ~/Pictures/beach.jpg
 ```
 
-The image fills the whole frame without being stretched (the excess is cropped from the center), and it is not mirrored. You appear in front of it, and when you vanish the image is what remains. There is no 4-second calibration, and the `SPACE` key does nothing in this mode. Turn off Teams' own background effects so they do not stack with this one.
+The image fills the whole frame without being stretched (the excess is cropped from the center), and it is not mirrored. You appear in front of it, and when you vanish the image is what remains. There is no 4-second calibration, and the `SPACE` key does nothing while an image is selected. Turn off Teams' own background effects so they do not stack with this one.
 
 ## Controls
 
+The keys work in both the preview and the panel:
+
+- `1`–`4`: switch effect (Normal, Naruto, Goku, Partículas).
 - `SPACE`: capture a new background.
 - `R`: make the person reappear.
 - `V`: manually start the selected mode's effect.

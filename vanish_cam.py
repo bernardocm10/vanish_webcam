@@ -31,6 +31,8 @@ try:
     )
     from .modes import MODES, FrameInfo, Mode
     from .call_audio import MIC_DESCRIPTION, CallSound, VirtualMic
+    from .control_panel import ACCENTS, AMBER, GREEN, MODE_CARDS, ControlPanel, PanelView
+    from .user_data import Settings, UserData
 except ImportError:
     from naruto_effect import joined_hands_from_landmarks, load_log
     from vanish_sound import SOUND_PATH, VanishSound
@@ -39,6 +41,8 @@ except ImportError:
     )
     from modes import MODES, FrameInfo, Mode
     from call_audio import MIC_DESCRIPTION, CallSound, VirtualMic
+    from control_panel import ACCENTS, AMBER, GREEN, MODE_CARDS, ControlPanel, PanelView
+    from user_data import Settings, UserData
 
 
 APP_DIR = Path(__file__).resolve().parent
@@ -119,7 +123,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--virtual-device", help="Nome do dispositivo virtual")
     parser.add_argument(
         "--mode", choices=tuple(MODES),
-        help="Pula o menu inicial e abre direto no modo escolhido",
+        help="Efeito inicial (padrão: o último usado); dá para trocar no painel",
     )
     parser.add_argument(
         "--call-audio", action="store_true",
@@ -131,7 +135,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--background-image", type=Path, metavar="ARQUIVO",
-        help="Troca o fundo real por esta imagem (JPG/PNG): sem calibração, você some revelando a imagem",
+        help="Imagem de fundo inicial (JPG/PNG; padrão: a última usada); dá para trocar no painel",
     )
     parser.add_argument(
         "--gesture-debug", action="store_true",
@@ -139,57 +143,6 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--self-test", action="store_true", help=argparse.SUPPRESS)
     return parser.parse_args()
-
-
-def choose_mode() -> str | None:
-    """Simple keyboard/mouse menu shown before the clean camera feed."""
-    title = "Scegli effetto"
-    selected = [None]
-    window = np.zeros((660, 700, 3), dtype=np.uint8)
-    window[:] = (26, 29, 34)
-    cv2.putText(window, "ESCOLHA SEU EFEITO", (68, 88),
-                cv2.FONT_HERSHEY_SIMPLEX, 0.85, (236, 239, 242), 2, cv2.LINE_AA)
-    buttons = (
-        ("normal", "1  NORMAL VANISH", "Sinal de V  /  dissolucao", 140),
-        ("naruto", "2  NARUTO VANISH", "Palmas juntas  /  tronco e fumaca", 260),
-        ("goku", "3  GOKU", "Dois dedos na testa por 1s  /  teletransporte", 380),
-        ("particles", "4  PARTICLES", "Sinal de V  /  fragmentos no vento", 500),
-    )
-    for mode, heading, detail, top in buttons:
-        cv2.rectangle(window, (65, top), (635, top + 94), (48, 54, 62), -1, cv2.LINE_AA)
-        cv2.rectangle(window, (65, top), (635, top + 94), (111, 142, 153), 2, cv2.LINE_AA)
-        cv2.putText(window, heading, (90, top + 38),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.77, (240, 245, 247), 2, cv2.LINE_AA)
-        cv2.putText(window, detail, (90, top + 68),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.53, (179, 195, 201), 1, cv2.LINE_AA)
-
-    def on_mouse(event, x, y, flags, userdata):
-        if event == cv2.EVENT_LBUTTONUP and 65 <= x <= 635:
-            for mode, _, _, top in buttons:
-                if top <= y <= top + 94:
-                    selected[0] = mode
-
-    cv2.namedWindow(title, cv2.WINDOW_AUTOSIZE)
-    cv2.setMouseCallback(title, on_mouse)
-    try:
-        while selected[0] is None:
-            cv2.imshow(title, window)
-            key = cv2.waitKey(30) & 0xFF
-            if key == ord("1"):
-                selected[0] = "normal"
-            elif key == ord("2"):
-                selected[0] = "naruto"
-            elif key == ord("3"):
-                selected[0] = "goku"
-            elif key == ord("4"):
-                selected[0] = "particles"
-            elif key in (ord("q"), 27):
-                return None
-            if cv2.getWindowProperty(title, cv2.WND_PROP_VISIBLE) < 1:
-                return None
-        return selected[0]
-    finally:
-        cv2.destroyWindow(title)
 
 
 def open_virtual_camera(args: argparse.Namespace, width: int, height: int):
@@ -281,15 +234,19 @@ def open_camera(index: int, width: int, height: int) -> cv2.VideoCapture:
     return capture
 
 
-def create_tasks(mode: str = "normal") -> tuple[
-    vision.ImageSegmenter, MultiViewGestureRecognizer | MultiViewHandLandmarker | GokuPoseDetector
-]:
-    segmenter_options = vision.ImageSegmenterOptions(
+def create_segmenter() -> vision.ImageSegmenter:
+    options = vision.ImageSegmenterOptions(
         base_options=python.BaseOptions(model_asset_path=str(SEGMENTER_MODEL)),
         running_mode=vision.RunningMode.VIDEO,
         output_confidence_masks=True,
         output_category_mask=False,
     )
+    return vision.ImageSegmenter.create_from_options(options)
+
+
+def create_recognizer(
+    mode: str = "normal",
+) -> MultiViewGestureRecognizer | MultiViewHandLandmarker | GokuPoseDetector:
     if mode == "goku":
         for model in (HAND_MODEL, FACE_MODEL):
             if not model.is_file():
@@ -310,18 +267,13 @@ def create_tasks(mode: str = "normal") -> tuple[
             min_hand_presence_confidence=0.35,
             min_tracking_confidence=0.45,
         )
-        segmenter = vision.ImageSegmenter.create_from_options(segmenter_options)
+        face = vision.FaceLandmarker.create_from_options(face_options)
         try:
-            face = vision.FaceLandmarker.create_from_options(face_options)
-            try:
-                hands = vision.HandLandmarker.create_from_options(hand_options)
-            except Exception:
-                face.close()
-                raise
+            hands = vision.HandLandmarker.create_from_options(hand_options)
         except Exception:
-            segmenter.close()
+            face.close()
             raise
-        return segmenter, GokuPoseDetector(face, hands)
+        return GokuPoseDetector(face, hands)
     if mode == "naruto":
         if not HAND_MODEL.is_file():
             raise RuntimeError(f"Modelo das mãos não encontrado: {HAND_MODEL}")
@@ -352,20 +304,15 @@ def create_tasks(mode: str = "normal") -> tuple[
         task_class = vision.GestureRecognizer
         wrapper_class = MultiViewGestureRecognizer
 
-    segmenter = vision.ImageSegmenter.create_from_options(segmenter_options)
+    primary = task_class.create_from_options(options)
     try:
-        primary = task_class.create_from_options(options)
-        try:
-            alternate = task_class.create_from_options(
-                replace(options, running_mode=vision.RunningMode.IMAGE)
-            )
-        except Exception:
-            primary.close()
-            raise
+        alternate = task_class.create_from_options(
+            replace(options, running_mode=vision.RunningMode.IMAGE)
+        )
     except Exception:
-        segmenter.close()
+        primary.close()
         raise
-    return segmenter, wrapper_class(primary, alternate)
+    return wrapper_class(primary, alternate)
 
 
 def person_mask(
@@ -394,7 +341,11 @@ def person_mask(
 
 
 def load_background_image(path: Path) -> np.ndarray:
-    image = cv2.imread(str(path), cv2.IMREAD_COLOR)
+    # imdecode legge anche percorsi con accenti su Windows, dove imread fallisce.
+    try:
+        image = cv2.imdecode(np.fromfile(str(path), dtype=np.uint8), cv2.IMREAD_COLOR)
+    except OSError:
+        image = None
     if image is None:
         raise RuntimeError(f"Não foi possível abrir a imagem de fundo: {path}")
     return image
@@ -842,12 +793,9 @@ def self_test() -> int:
         raise RuntimeError(f"Arquivos faltando: {', '.join(missing)}")
     load_log()
     import pygame.mixer  # The distributed build must contain its MP3 decoder.
+    create_segmenter().close()
     for mode in MODES:
-        segmenter, recognizer = create_tasks(mode)
-        try:
-            recognizer.close()
-        finally:
-            segmenter.close()
+        create_recognizer(mode).close()
     print("[Webcam] Autoteste concluído: modelos, imagens e áudio presentes.")
     return 0
 
@@ -856,16 +804,13 @@ def run() -> int:
     args = parse_args()
     if getattr(args, "self_test", False):
         return self_test()
-    mode = args.mode or choose_mode()
-    if mode is None:
-        return 0
     # Chiudere il terminale (SIGHUP) o un kill (SIGTERM) diventano un'uscita
     # normale: webcam, finestre e microfono virtuale vengono rilasciati.
     for name in ("SIGTERM", "SIGHUP"):
         if hasattr(signal, name):
             signal.signal(getattr(signal, name), stop_on_signal)
     with ExitStack() as resources:
-        return run_camera(args, resources, mode)
+        return run_camera(args, resources, args.mode)
 
 
 def stop_on_signal(signum, frame) -> None:
@@ -902,52 +847,197 @@ def open_sound(mode: str, mic: VirtualMic | None = None):
     return CallSound(sound, mic, path) if mic is not None else sound
 
 
-def run_camera(args: argparse.Namespace, resources: ExitStack, mode_name: str) -> int:
+class EffectRuntime:
+    """Recognizer, sound and effect of one mode: switching mode replaces only this.
+
+    Camera, segmenter, virtual devices and background stay open across switches.
+    """
+
+    def __init__(self, name: str, segment: PersonSegmenter, mic: VirtualMic | None):
+        download_models(name)
+        self.name = name
+        self.recognizer = create_recognizer(name)
+        self.detector = AsyncRecognizer(detection_function(name, self.recognizer), self.recognizer.close)
+        try:
+            self.sound = open_sound(name, mic)
+        except Exception:
+            self.detector.close()
+            raise
+        self.mode: Mode = MODES[name](segment, self.sound)
+
+    def close(self) -> None:
+        try:
+            self.detector.close()
+        finally:
+            if self.sound is not None:
+                self.sound.close()
+
+
+KEY_ACTIONS = {
+    ord(" "): ("recapture",),
+    ord("r"): ("reappear",),
+    ord("v"): ("vanish",),
+    ord("f"): ("fullscreen",),
+    **{ord(str(number)): ("mode", card.key) for number, card in enumerate(MODE_CARDS, start=1)},
+}
+MESSAGE_SECONDS = 6.0
+
+
+def panel_status(phase: str, mode: Mode, calibration_remaining: int | None) -> tuple[str, tuple[int, int, int]]:
+    if phase == "calibrating":
+        return f"Capturando o fundo: saia da câmera ({calibration_remaining or 0} s)", AMBER
+    accent = ACCENTS.get(mode.name, GREEN)
+    return {
+        "vanishing": ("Sumindo…", accent),
+        "vanished": ("Invisível", accent),
+        "appearing": ("Reaparecendo…", accent),
+    }.get(mode.phase, ("Pronto: faça o gesto", GREEN))
+
+
+def run_camera(args: argparse.Namespace, resources: ExitStack, mode_name: str | None = None) -> int:
+    user_data = UserData.default()
+    saved = user_data.load()
+    mode_name = mode_name or (saved.mode if saved.mode in MODES else "normal")
+    chosen: Path | None = None
+    background_source: np.ndarray | None = None  # Immagine scelta, a risoluzione originale.
+    if getattr(args, "background_image", None) is not None:
+        chosen = Path(args.background_image)
+        background_source = load_background_image(chosen)
+    elif saved.background is not None:
+        try:
+            background_source = load_background_image(saved.background)
+            chosen = saved.background
+        except RuntimeError as error:
+            print(f"[Webcam] {error}")
+    user_data.save(Settings(mode_name, chosen))
+    gallery = tuple(user_data.gallery())
+
     download_models(mode_name)
     capture = open_camera(args.camera, args.width, args.height)
     resources.callback(capture.release)
     capture.set(cv2.CAP_PROP_FPS, args.fps)
-    segmenter, recognizer = create_tasks(mode_name)
+    segmenter = create_segmenter()
     resources.callback(segmenter.close)
-    detector = AsyncRecognizer(detection_function(mode_name, recognizer), recognizer.close)
-    resources.callback(detector.close)
-    background_image = (
-        load_background_image(args.background_image)
-        if getattr(args, "background_image", None) is not None
-        else None
-    )
-    sound = open_sound(mode_name, open_call_mic(args, resources))
-    if sound is not None:
-        resources.callback(sound.close)
     segment = PersonSegmenter(segmenter)
-    mode: Mode = MODES[mode_name](segment, sound)
+    mic = open_call_mic(args, resources)
+    effect = EffectRuntime(mode_name, segment, mic)
+    # Chiude l'effetto attivo in quel momento, anche dopo un cambio di modo.
+    resources.callback(lambda: effect.close())
     resources.callback(cv2.destroyAllWindows)
-    cv2.namedWindow(WINDOW_NAME, cv2.WINDOW_NORMAL | cv2.WINDOW_KEEPRATIO)
+    # GUI_NORMAL: solo il video, senza la barra degli strumenti di Qt.
+    cv2.namedWindow(WINDOW_NAME, cv2.WINDOW_NORMAL | cv2.WINDOW_KEEPRATIO | cv2.WINDOW_GUI_NORMAL)
     cv2.resizeWindow(WINDOW_NAME, args.width, args.height)
+    panel = ControlPanel()
+    resources.callback(panel.close)
 
     state = AppState(calibration_started=time.perf_counter(), fullscreen=args.fullscreen)
     if state.fullscreen:
         set_fullscreen(True)
 
     background: np.ndarray | None = None
+    real_background: np.ndarray | None = None  # Ultimo sfondo reale: torna senza ricalibrare.
     background_samples: list[np.ndarray] = []
     virtual_camera = None
     virtual_camera_initialized = False
     calibration_remaining = None
     last_gesture_report = float("-inf")
+    message, message_until = "", float("-inf")
     started = state.calibration_started
-    if background_image is None:
+    width = height = 0
+    if background_source is None:
         print("[Webcam] Saia da frente da câmera por 4 segundos: capturando o fundo.")
     else:
-        # A imagem e' o fundo: niente calibrazione.
+        # L'immagine e' lo sfondo: niente calibrazione.
         state.phase = "running"
-        print(f"[Webcam] Fundo: {args.background_image}")
-    print(f"[{mode.name.capitalize()}] {mode.instructions}")
-    space_key = "ESPAÇO novo fundo, " if background_image is None else ""
-    if mode.manual_keys:
-        print(f"[Webcam] Teclas na janela: {space_key}R reaparecer, V sumir, F tela cheia, Q sair.")
-    else:
-        print(f"[Webcam] Teclas na janela: {space_key}F tela cheia, Q sair.")
+        print(f"[Webcam] Fundo: {chosen}")
+    print(f"[{effect.mode.name.capitalize()}] {effect.mode.instructions}")
+    print("[Webcam] Troque efeito e fundo no painel 'VanishCam' (ou teclas 1-4). Q fecha.")
+
+    def notify(text: str, now: float) -> None:
+        nonlocal message, message_until
+        print(f"[Webcam] {text}")
+        message, message_until = text, now + MESSAGE_SECONDS
+
+    def start_calibration(now: float) -> None:
+        nonlocal calibration_remaining
+        state.phase = "calibrating"
+        state.calibration_started = now
+        background_samples.clear()
+        calibration_remaining = None
+        effect.mode.reset()
+        print("[Webcam] Saia da frente da câmera por 4 segundos: capturando o novo fundo.")
+
+    def switch_mode(name: str) -> None:
+        nonlocal effect
+        if name == effect.name or name not in MODES:
+            return
+        previous = effect.name
+        # Prima chiudere: il vecchio suono possiede il mixer audio condiviso.
+        effect.close()
+        try:
+            effect = EffectRuntime(name, segment, mic)
+        except Exception as error:
+            effect = EffectRuntime(previous, segment, mic)
+            notify(f"Não consegui abrir o modo {name}: {error}", time.perf_counter())
+            return
+        user_data.save(Settings(name, chosen))
+        print(f"[{effect.mode.name.capitalize()}] {effect.mode.instructions}")
+
+    def choose_background(path: Path | None, now: float) -> None:
+        nonlocal chosen, background_source, background
+        if path is None:
+            chosen, background_source = None, None
+            if real_background is None:
+                start_calibration(now)
+            else:
+                background = real_background
+                effect.mode.reset()
+        else:
+            try:
+                image = load_background_image(path)
+            except RuntimeError as error:
+                notify(str(error), now)
+                return
+            chosen, background_source = path, image
+            background = fit_background(image, width, height)
+            state.phase = "running"
+            background_samples.clear()
+            effect.mode.reset()
+        user_data.save(Settings(effect.name, chosen))
+
+    def handle(action: tuple, now: float) -> None:
+        nonlocal gallery
+        kind = action[0]
+        running = state.phase == "running"
+        if kind == "mode":
+            switch_mode(action[1])
+        elif kind == "background":
+            choose_background(action[1], now)
+        elif kind == "import":
+            try:
+                load_background_image(action[1])
+                imported = user_data.import_image(action[1])
+            except (OSError, RuntimeError, ValueError) as error:
+                notify(f"Imagem não adicionada: {error}", now)
+                return
+            gallery = tuple(user_data.gallery())
+            choose_background(imported, now)
+        elif kind == "remove":
+            user_data.remove_image(action[1])
+            gallery = tuple(user_data.gallery())
+            if chosen == action[1]:
+                choose_background(None, now)
+        elif kind == "error":
+            notify(action[1], now)
+        elif kind == "recapture" and background_source is None:
+            start_calibration(now)
+        elif kind == "reappear" and running and effect.mode.manual_keys:
+            effect.mode.reappear()
+        elif kind == "vanish" and running and effect.mode.manual_keys:
+            effect.mode.vanish(now)
+        elif kind == "fullscreen":
+            state.fullscreen = not state.fullscreen
+            set_fullscreen(state.fullscreen)
 
     try:
         while True:
@@ -969,12 +1059,13 @@ def run_camera(args: argparse.Namespace, resources: ExitStack, mode_name: str) -
                 virtual_camera_initialized = True
                 if virtual_camera is not None:
                     resources.callback(virtual_camera.close)
-                if background_image is not None:
-                    background = fit_background(background_image, width, height)
+                if background_source is not None:
+                    background = fit_background(background_source, width, height)
             now = time.perf_counter()
             elapsed_ms = int((now - started) * 1000)
             camera_frame = frame
-            if background_image is not None:
+            mode = effect.mode
+            if background_source is not None:
                 # La maschera resta in cache per questo timestamp: gli effetti la riusano.
                 frame = replace_background(frame, background, segment(frame, elapsed_ms))
 
@@ -993,6 +1084,8 @@ def run_camera(args: argparse.Namespace, resources: ExitStack, mode_name: str) -
                     else:
                         background = frame.copy()
                     background_samples.clear()
+                    real_background = background
+                    panel.set_real_background(background)
                     state.phase = "running"
                     mode.reset()
                     print("[Webcam] Fundo pronto. Pode voltar para a frente da câmera.")
@@ -1002,51 +1095,48 @@ def run_camera(args: argparse.Namespace, resources: ExitStack, mode_name: str) -
                 if (
                     mode.detecting
                     and now - state.last_gesture_check >= mode.detect_interval
-                    and not detector.busy
+                    and not effect.detector.busy
                 ):
                     state.last_gesture_check = now
-                    detector.submit(mode.detection_image(camera_frame), elapsed_ms)
-                detected = detector.take_result()
+                    effect.detector.submit(mode.detection_image(camera_frame), elapsed_ms)
+                detected = effect.detector.take_result()
                 if detected is not None and mode.detecting:
                     mode.on_detection(detected[0], now)
                     if args.gesture_debug and now - last_gesture_report >= 1.0:
-                        print(f"[Gesto] {detector_status(recognizer, detected[0])}")
+                        print(f"[Gesto] {detector_status(effect.recognizer, detected[0])}")
                         last_gesture_report = now
                 display = mode.render(FrameInfo(frame, background, now, elapsed_ms))
 
                 # Lo sfondo segue luce e piccoli spostamenti, anche da invisibili.
                 if (
                     not args.static_background
-                    and background_image is None
+                    and background_source is None
                     and mode.phase in ("ready", "vanished")
                     and now - state.last_background_update >= BACKGROUND_UPDATE_SECONDS
                 ):
                     state.last_background_update = now
                     background = update_background(background, frame, segment(frame, elapsed_ms))
+                    real_background = background
                     mode.background_changed()
 
             if virtual_camera is not None:
                 send_virtual_frame(virtual_camera, display)
             cv2.imshow(WINDOW_NAME, display)
+            status, status_color = panel_status(state.phase, mode, calibration_remaining)
+            panel.show(PanelView(
+                mode=effect.name, status=status, status_color=status_color, background=chosen,
+                gallery=gallery, manual_keys=mode.manual_keys, can_recapture=background_source is None,
+                fullscreen=state.fullscreen, message=message if now < message_until else "",
+            ))
 
             key = cv2.waitKey(1) & 0xFF
-            running = state.phase == "running"
-            if key in (ord("q"), 27):
+            if key in (ord("q"), 27) or panel.closed:
                 break
-            if key == ord(" ") and background_image is None:
-                state.phase = "calibrating"
-                state.calibration_started = now
-                background_samples.clear()
-                calibration_remaining = None
-                mode.reset()
-                print("[Webcam] Saia da frente da câmera por 4 segundos: capturando o novo fundo.")
-            elif key == ord("r") and running and mode.manual_keys:
-                mode.reappear()
-            elif key == ord("v") and running and mode.manual_keys:
-                mode.vanish(now)
-            elif key == ord("f"):
-                state.fullscreen = not state.fullscreen
-                set_fullscreen(state.fullscreen)
+            actions = panel.poll()
+            if key in KEY_ACTIONS:
+                actions.append(KEY_ACTIONS[key])
+            for action in actions:
+                handle(action, now)
             if virtual_camera is not None:
                 virtual_camera.sleep_until_next_frame()
     finally:

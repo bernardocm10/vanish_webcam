@@ -1,8 +1,10 @@
 import argparse
+import tempfile
 import threading
 import time
 import unittest
 from contextlib import ExitStack
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
@@ -38,6 +40,41 @@ class InlineRecognizer:
 
     def close(self):
         self.close_detector()
+
+
+class FakePanel:
+    """Pannello senza finestra: registra le viste e restituisce un'azione per frame."""
+
+    def __init__(self, actions=()):
+        self.actions = list(actions)
+        self.views, self.real_backgrounds = [], []
+        self.closed = False
+
+    def show(self, view):
+        self.views.append(view)
+
+    def poll(self):
+        # Un'azione puo' essere una funzione del pannello: serve quando dipende da cio' che e' gia' successo.
+        actions = self.actions.pop(0) if self.actions else []
+        return [action(self) if callable(action) else action for action in actions]
+
+    def set_real_background(self, bgr):
+        self.real_backgrounds.append(bgr.copy())
+
+    def close(self):
+        pass
+
+
+def app_mocks(mocks, segmenter, recognizer, actions=()):
+    """Modelli finti, pannello finto e preferenze in una cartella temporanea."""
+    mocks.enter_context(patch.object(app, "create_segmenter", return_value=segmenter))
+    mocks.enter_context(patch.object(app, "create_recognizer", return_value=recognizer))
+    panel = FakePanel(actions)
+    mocks.enter_context(patch.object(app, "ControlPanel", return_value=panel))
+    folder = mocks.enter_context(tempfile.TemporaryDirectory())
+    user_data = app.UserData(Path(folder))
+    mocks.enter_context(patch.object(app.UserData, "default", return_value=user_data))
+    return panel, user_data
 
 
 def video_clock(frames, times):
@@ -108,7 +145,7 @@ class VideoLoopTests(unittest.TestCase):
             mocks.enter_context(patch.object(app, "parse_args", return_value=arguments()))
             mocks.enter_context(patch.object(app, "download_models"))
             mocks.enter_context(patch.object(app, "open_camera", return_value=capture))
-            mocks.enter_context(patch.object(app, "create_tasks", return_value=(segmenter, recognizer)))
+            app_mocks(mocks, segmenter, recognizer)
             opening = mocks.enter_context(patch.object(app, "open_virtual_camera", return_value=camera))
             mocks.enter_context(patch.object(app, "person_mask", return_value=np.ones((24, 40), np.float32)))
             mocks.enter_context(patch.object(app, "recognize_gesture", return_value=gesture))
@@ -149,7 +186,7 @@ class VideoLoopTests(unittest.TestCase):
             mocks.enter_context(patch.object(app, "parse_args", return_value=args))
             mocks.enter_context(patch.object(app, "download_models"))
             mocks.enter_context(patch.object(app, "open_camera", return_value=capture))
-            mocks.enter_context(patch.object(app, "create_tasks", return_value=(Mock(), Mock())))
+            app_mocks(mocks, Mock(), Mock())
             loaded = mocks.enter_context(patch.object(
                 app, "load_background_image", return_value=np.full((48, 80, 3), 30, np.uint8),
             ))
@@ -164,7 +201,7 @@ class VideoLoopTests(unittest.TestCase):
             mocks.enter_context(patch.object(app.cv2, "waitKey", side_effect=(0, ord("v"), ord("q"))))
             mocks.enter_context(patch("builtins.print"))
             self.assertEqual(app.run(), 0)
-        loaded.assert_called_once_with("beach.png")
+        loaded.assert_called_once_with(Path("beach.png"))
         # Gia' dal primo frame: persona davanti all'immagine, niente calibrazione.
         self.assertTrue((displayed[0][:, :20] == 200).all())
         self.assertTrue((displayed[0][:, 20:] == 30).all())
