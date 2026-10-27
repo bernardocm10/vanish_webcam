@@ -1,6 +1,6 @@
 # VanishCam
 
-Vanish from your webcam with a hand gesture, live in Teams, OBS, or any video call. Dissolve into thin air, swap yourself for a log in a cloud of smoke, teleport like Goku, or scatter into fragments in the wind — in front of your real room or any picture you choose.
+Vanish from your webcam with a hand gesture, live in Teams, OBS, or any video call. Dissolve into thin air, swap yourself for a log in a cloud of smoke, teleport like Goku, scatter into fragments in the wind, or turn to ash and crumble — in front of your real room or any picture you choose.
 
 <p align="center"><img src="docs/panel.png" alt="VanishCam control panel" width="360"></p>
 
@@ -8,7 +8,7 @@ Everything runs on your computer: the video is never recorded or sent anywhere, 
 
 ## Features
 
-- **Four effects**, each triggered by a hand gesture.
+- **Five effects**, each triggered by a hand gesture.
 - **Control panel** to switch effect and background while the camera keeps running.
 - **Custom backgrounds:** put any picture behind you; when you vanish, the picture is what remains.
 - **Works in calls:** virtual webcam for Teams, Zoom, Meet, and OBS, and a virtual microphone so the call hears the effect sounds (Linux).
@@ -43,6 +43,7 @@ Using it in a call? See [Calls, Teams and OBS](docs/calls.md).
 | **Naruto** | Palms pressed together or hands clasped, held for a moment | A cloud of smoke, and a log takes your place |
 | **Goku** | Two fingers on your forehead for 1 s | Speed lines and you teleport; repeat to come back |
 | **Particles** | Salute: flat hand on your brow, held for a moment | You break into fragments carried by the wind |
+| **Ash** | Both open hands raised beside your head, held for a moment | You turn to grey ash, crumble from the head down, and a pile of ash stays on the floor |
 
 Details for each one in [Effects](docs/effects.md).
 

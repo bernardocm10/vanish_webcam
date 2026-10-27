@@ -20,7 +20,7 @@ It follows your system language (see [Language](configuration.md#language)). Thi
 | Amber | Capturing the background: step out of the frame |
 | Red | Vanishing, invisible, or reappearing |
 
-**A · Effect** (*Efeito*) — click a row, or press `1`–`4`, to switch effect. The active one is the inverted row marked **■ LIVE** (*ATIVO*). Switching keeps the camera, the virtual webcam, the call microphone, and the background as they are: no restart, no new calibration.
+**A · Effect** (*Efeito*) — click a row, or press `1`–`5`, to switch effect. The active one is the inverted row marked **■ LIVE** (*ATIVO*). Switching keeps the camera, the virtual webcam, the call microphone, and the background as they are: no restart, no new calibration.
 
 **B · Background** (*Fundo*) — choose what is behind you:
 
@@ -57,7 +57,7 @@ They work in both the video window and the panel:
 
 | Key | Action |
 | --- | --- |
-| `1`–`4` | Switch effect (Normal, Naruto, Goku, Particles) |
+| `1`–`5` | Switch effect (Normal, Naruto, Goku, Particles, Ash) |
 | `V` | Vanish now, without the gesture |
 | `R` | Reappear |
 | `SPACE` | Capture a new real background |

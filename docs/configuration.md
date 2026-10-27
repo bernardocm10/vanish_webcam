@@ -8,7 +8,7 @@ Pass them after the start command, for example `.venv/bin/python vanish_cam.py -
 
 | Option | What it does |
 | --- | --- |
-| `--mode normal\|naruto\|goku\|particles` | Effect to start with (default: the last one used) |
+| `--mode normal\|naruto\|goku\|particles\|ash` | Effect to start with (default: the last one used) |
 | `--background-image FILE` | Picture to start with as the background (default: the last one used) |
 | `--camera N` | Webcam number (default: 0) |
 | `--width`, `--height` | Requested resolution (default: 1280x720) |
@@ -57,6 +57,7 @@ To keep the original snapshot and never update it, use `--static-background`.
 - Keep your hand fully visible and well lit, facing the camera.
 - For Naruto, keep **both** hands in the frame, and either press the palms together (wrists touching too, fingers pointing up) or clasp your hands with the fingers interlaced, and hold for a moment. If `--gesture-debug` shows `hands=1`, one hand is hiding the other: turn them a little towards the camera.
 - For Goku, hold the pose for a full second: breaking it restarts the countdown.
+- For Ash, keep your face and **both** hands in the frame: open hands, one on each side of your head, above your chin.
 - For Particles, keep your face visible, and the four fingers straight and together on your brow.
 - Run with `--gesture-debug` to see in the terminal what the app detects. Nothing is drawn on the video.
 

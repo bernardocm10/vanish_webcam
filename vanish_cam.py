@@ -30,6 +30,7 @@ try:
         SOUND_NAME as GOKU_SOUND_NAME, face_reference, forehead_fingers_pose, sound_path,
     )
     from .particles_effect import salute_pose, salute_reference
+    from .ash_effect import hands_up_pose, hands_up_reference
     from .modes import MODES, FrameInfo, Mode
     from .call_audio import MIC_DESCRIPTION, CallSound, VirtualMic
     from .control_panel import (
@@ -44,6 +45,7 @@ except ImportError:
         SOUND_NAME as GOKU_SOUND_NAME, face_reference, forehead_fingers_pose, sound_path,
     )
     from particles_effect import salute_pose, salute_reference
+    from ash_effect import hands_up_pose, hands_up_reference
     from modes import MODES, FrameInfo, Mode
     from call_audio import MIC_DESCRIPTION, CallSound, VirtualMic
     from control_panel import (
@@ -372,7 +374,7 @@ def create_segmenter() -> vision.ImageSegmenter:
 def create_recognizer(
     mode: str = "normal",
 ) -> MultiViewGestureRecognizer | MultiViewHandLandmarker | GokuPoseDetector:
-    if mode in ("goku", "particles"):
+    if mode in ("goku", "particles", "ash"):
         for model in (HAND_MODEL, FACE_MODEL):
             if not model.is_file():
                 raise RuntimeError(t("models.missing", path=model))
@@ -398,7 +400,7 @@ def create_recognizer(
         except Exception:
             face.close()
             raise
-        detector = SalutePoseDetector if mode == "particles" else GokuPoseDetector
+        detector = {"particles": SalutePoseDetector, "ash": HandsUpPoseDetector}.get(mode, GokuPoseDetector)
         return detector(face, hands)
     if mode == "naruto":
         if not HAND_MODEL.is_file():
@@ -782,16 +784,25 @@ class GokuPoseDetector:
             self.last_face = None
         result = self.hands.detect_for_video(image, timestamp_ms)
         self.last_hand_count = len(result.hand_landmarks)
-        return any(
-            self.pose(hand, self.last_face, image.width, image.height)
-            for hand in result.hand_landmarks
-        )
+        return self.matches(result.hand_landmarks, self.last_face, image.width, image.height)
+
+    def matches(self, hands, face, width: int, height: int) -> bool:
+        return any(self.pose(hand, face, width, height) for hand in hands)
 
     def close(self) -> None:
         try:
             self.face.close()
         finally:
             self.hands.close()
+
+
+class HandsUpPoseDetector(GokuPoseDetector):
+    """Both hands raised beside the head: a pose of the two hands together, not of either one."""
+
+    reference = staticmethod(hands_up_reference)
+
+    def matches(self, hands, face, width: int, height: int) -> bool:
+        return hands_up_pose(hands, face, width, height)
 
 
 class SalutePoseDetector(GokuPoseDetector):
@@ -892,7 +903,7 @@ class PersonSegmenter:
 def detection_function(mode: str, recognizer) -> Callable[[mp.Image, int], object]:
     if mode == "naruto":
         return recognizer.recognize_joined_hands
-    if mode in ("goku", "particles"):
+    if mode in ("goku", "particles", "ash"):
         return recognizer.recognize_pose
     # Looked up on every call (not bound here) so the tests can replace it.
     return lambda image, timestamp_ms: recognize_gesture(recognizer, image, timestamp_ms)

@@ -87,7 +87,7 @@ def t(key: str, **values) -> str:
 STRINGS: dict[str, dict[str, str]] = {
     "en": {
         # Command line.
-        "cli.description": "Vanish from your webcam with a hand gesture: Normal, Naruto, Goku or Particles.",
+        "cli.description": "Vanish from your webcam with a hand gesture: Normal, Naruto, Goku, Particles or Ash.",
         "cli.camera": "Webcam index",
         "cli.width": "Video width",
         "cli.height": "Video height",
@@ -172,6 +172,9 @@ STRINGS: dict[str, dict[str, str]] = {
         "mode.particles.title": "Particles",
         "mode.particles.hint": "salute on the brow — fragments in the wind",
         "mode.particles.instructions": "Salute (flat hand, fingers together on your brow) for a moment: you turn into fragments in the wind.",
+        "mode.ash.title": "Ash",
+        "mode.ash.hint": "hands up — turn to ash and crumble",
+        "mode.ash.instructions": "Raise both open hands beside your head and hold for a moment: you turn to ash and crumble into a pile.",
         "goku.hold": "Hold the pose: {seconds:.2f}s",
         "goku.vanished": "Gone. Lower your hand and repeat the gesture to reappear.",
         "goku.no_sound": "No sound: put {name} in assets/ to enable it.",
@@ -198,7 +201,7 @@ STRINGS: dict[str, dict[str, str]] = {
         "picker.missing": "No file picker available (install zenity).",
     },
     "pt": {
-        "cli.description": "Suma da webcam com um gesto: Normal, Naruto, Goku ou Partículas.",
+        "cli.description": "Suma da webcam com um gesto: Normal, Naruto, Goku, Partículas ou Cinzas.",
         "cli.camera": "Índice da webcam",
         "cli.width": "Largura do vídeo",
         "cli.height": "Altura do vídeo",
@@ -278,6 +281,9 @@ STRINGS: dict[str, dict[str, str]] = {
         "mode.particles.title": "Partículas",
         "mode.particles.hint": "continência na testa — fragmentos no vento",
         "mode.particles.instructions": "Bata continência (mão reta, dedos unidos na testa) por um instante: você vira fragmentos no vento.",
+        "mode.ash.title": "Cinzas",
+        "mode.ash.hint": "mãos para o alto — vira cinza e desmorona",
+        "mode.ash.instructions": "Levante as duas mãos abertas ao lado da cabeça e segure um instante: você vira cinza e desmorona num monte.",
         "goku.hold": "Segure a pose: {seconds:.2f}s",
         "goku.vanished": "Sumiu. Abaixe a mão e repita o gesto para reaparecer.",
         "goku.no_sound": "Sem som: coloque {name} em assets/ para ativar.",
