@@ -47,12 +47,12 @@ Two windows open: the video preview and the **VanishCam** control panel.
 
 ## Control panel
 
-The panel sits next to the video, so the preview and the virtual camera still show only the video.
+The panel sits next to the video, so the preview and the virtual camera still show only the video. It is styled like a broadcast control surface: a light faceplate, black ink, and a single red signal color for whatever is live.
 
-- **Efeito:** click a card, or press `1`–`4`, to switch effect. The camera, the virtual webcam, the call microphone, and the background stay as they are. There is no new calibration.
-- **Fundo:** **Fundo real** is your room; the other tiles are your images. **+ Adicionar** opens the system file picker and copies the image into the gallery (up to 7, oldest removed first). Hover over an image and click **×** to remove it from the gallery (the original file is never touched). Going back to **Fundo real** reuses the background already captured; it only asks you to step out of the frame if it was never captured in this session.
-- **Controles:** **Sumir** (`V`), **Reaparecer** (`R`), **Novo fundo** (`SPACE`, only with the real background), and **Tela cheia** (`F`). Sumir and Reaparecer are disabled in Goku mode.
-- The status at the top shows what is happening: capturing the background, ready, vanishing, or invisible.
+- **Status line and tally lamp:** the line under the title bar says what is happening, and the lamp in the corner shows the same thing at a glance: green when ready, amber while capturing the background, red while you vanish or are invisible.
+- **A · Efeito:** click a row, or press `1`–`4`, to switch effect. The active effect is the inverted row marked **■ ATIVO**. The camera, the virtual webcam, the call microphone, and the background stay as they are, and there is no new calibration.
+- **B · Fundo:** **REAL** is your room (hatched until it has been captured); **IMG 01**, **IMG 02**… are your images, and the chosen one has a thick black frame. **ADICIONAR** opens the system file picker and copies the image into the gallery (up to 7, oldest removed first). Hover over an image and click **×** to remove it from the gallery (the original file is never touched). Going back to **REAL** reuses the background already captured; it only asks you to step out of the frame if it was never captured in this session.
+- **C · Controles:** keys for **SUMIR** (`V`), **REAPARECER** (`R`), **NOVO FUNDO** (`SPACE`, only with the real background), and **TELA CHEIA** (`F`). Keys that do not apply are greyed out; SUMIR and REAPARECER are disabled in Goku mode.
 
 The app remembers the last effect and background and starts with them next time. They are stored in `~/.config/vanishcam/` on Linux and `%APPDATA%\VanishCam\` on Windows. Closing the panel or pressing `Q` quits the app.
 
@@ -89,7 +89,7 @@ sudo modprobe v4l2loopback devices=1 video_nr=10 exclusive_caps=1 card_label="Va
 ./teams.sh
 ```
 
-To get a **VanishCam** entry in the GNOME app menu, run `./install-launcher.sh` once. The entry runs `vanishcam-launcher.sh`, which asks for your password in a system dialog only when the virtual webcam is missing (after a reboot), then opens the app with its control panel. The **+ Adicionar** button in the panel uses `zenity` (preinstalled on GNOME) or `kdialog` for the file picker.
+To get a **VanishCam** entry in the GNOME app menu, run `./install-launcher.sh` once. The entry runs `vanishcam-launcher.sh`, which asks for your password in a system dialog only when the virtual webcam is missing (after a reboot), then opens the app with its control panel. The **ADICIONAR** tile in the panel uses `zenity` (preinstalled on GNOME) or `kdialog` for the file picker.
 
 In Teams, choose **VanishCam** under **Settings → Devices → Camera**. Start the app before joining the call, and turn off Teams' own background effects.
 
@@ -151,6 +151,8 @@ To troubleshoot gesture recognition without adding text to the video, pass `--ge
 
 The [wooden log](assets/substitution_log.png) is an original illustration generated with ImageGen using the supplied image as a visual reference. Smoke is drawn in real time by `naruto_effect.py` so it follows the person's position and scales with the video. We also considered a [CC0 smoke sprite sheet](https://opengameart.org/content/smoke-sprite-sheet), but the procedural animation adapts better to dynamic positioning without an additional asset. No anime frames or assets are included in the project.
 
+The control panel uses [IBM Plex](https://github.com/IBM/plex) Mono and Sans Condensed, bundled in `assets/fonts` under the [SIL Open Font License](assets/fonts/OFL.txt), so it looks the same on every system.
+
 Goku mode (`goku_effect.py`) uses `face_landmarker.task` to locate the forehead and `hand_landmarker.task` to track the fingers, in a background thread so the video never waits for the models. The teleport's speed lines are drawn in code, without anime frames.
 
 ## Development
@@ -163,6 +165,6 @@ Run the tests from the project folder:
 
 - `vanish_cam.py` runs the camera, calibration, background updates, keys, and outputs. Gesture detection runs in a background thread (`AsyncRecognizer`). Everything that depends on the effect (recognizer, sound, and `Mode`) lives in `EffectRuntime`, which is the only part replaced when you switch effect.
 - `modes.py` has one class per effect (`NormalMode`, `NarutoMode`, `GokuMode`, `ParticlesMode`). Each turns detection results into phases (`ready`, `vanishing`, `vanished`, and `appearing` for Goku) and draws each frame.
-- `control_panel.py` draws the panel with Pillow and turns clicks into actions. `user_data.py` stores preferences and the background gallery.
+- `control_panel.py` draws the panel with Pillow, using the IBM Plex fonts in `assets/fonts`, and turns clicks into actions. `user_data.py` stores preferences and the background gallery.
 
-To add an effect, subclass `Mode`, register it in `MODES`, add its detector in `create_recognizer` and `detection_function`, and add its card to `MODE_CARDS`.
+To add an effect, subclass `Mode`, register it in `MODES`, add its detector in `create_recognizer` and `detection_function`, and add its row to `MODE_CARDS`.
