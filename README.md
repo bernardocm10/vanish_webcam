@@ -15,19 +15,9 @@ Video is processed on your computer. It is neither recorded nor sent to a server
 - **Works in calls:** virtual webcam for Teams, Zoom, Meet, and OBS, plus an optional virtual microphone so the people in the call hear the effect sounds (Linux).
 - **Background that adapts:** it follows lighting and exposure changes, so you do not leave a shadow behind.
 
-## ☕ Buy me a coffee
-
-If you like this project and want to support it, you can buy me a coffee through [PayPal](https://paypal.me/nicovic17) or [Revolut](https://revolut.me/nicoauriemma).
-
-## Download for Windows
-
-[Download VanishCam.exe]( https://nicoaauriemma.vercel.app/shop ) and double-click it to run the app. You do not need to install Python.
-
-The published EXE may predate the Particles and Goku modes, custom backgrounds, and the control panel. To use them now, run the local scripts or rebuild the EXE from these sources (`BUILD_WINDOWS.bat`).
-
 ## Getting started
 
-**Windows:** double-click `AVVIA_LOCALE.bat`. The first run creates a Python environment and installs the dependencies, which needs an internet connection once.
+**Windows:** double-click `AVVIA_LOCALE.bat`. The first run creates a Python environment and installs the dependencies, which needs an internet connection once. To build a standalone `VanishCam.exe` that runs without Python, run `BUILD_WINDOWS.bat`.
 
 **Linux:** create the environment once, then start the app:
 
@@ -168,3 +158,7 @@ Run the tests from the project folder:
 - `control_panel.py` draws the panel with Pillow, using the IBM Plex fonts in `assets/fonts`, and turns clicks into actions. `user_data.py` stores preferences and the background gallery.
 
 To add an effect, subclass `Mode`, register it in `MODES`, add its detector in `create_recognizer` and `detection_function`, and add its row to `MODE_CARDS`.
+
+## Credits
+
+VanishCam is a fork of [Nicovic17/vanish_webcam](https://github.com/Nicovic17/vanish_webcam) by [Nicola Auriemma](https://github.com/Nicovic17), who developed the first two effects, **Normal** (dissolve) and **Naruto** (log and smoke), and the original app this repository is built on: the webcam pipeline, person segmentation, and gesture recognition with MediaPipe.
