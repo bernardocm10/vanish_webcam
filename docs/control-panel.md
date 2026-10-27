@@ -40,7 +40,7 @@ Pick it in **B · Fundo**, or start the app with one from the command line:
 ```
 
 ```powershell
-local_app\AVVIA_LOCALE.bat --background-image C:\Users\me\Pictures\beach.jpg
+.\AVVIA_LOCALE.bat --background-image C:\Users\me\Pictures\beach.jpg
 ```
 
 - The picture fills the whole frame without being stretched (the excess is cropped from the center) and is never mirrored.

@@ -73,7 +73,7 @@ OBS has only one virtual camera, so do not use it as both an OBS input and outpu
 As an alternative virtual video source, use [Unity Capture](https://github.com/schellingb/UnityCapture):
 
 ```powershell
-local_app\AVVIA_VIRTUAL.bat --virtual-backend unitycapture
+.\AVVIA_VIRTUAL.bat --virtual-backend unitycapture
 ```
 
 See the [pyvirtualcam documentation](https://github.com/letmaik/pyvirtualcam#supported-virtual-cameras) for all supported virtual cameras.
