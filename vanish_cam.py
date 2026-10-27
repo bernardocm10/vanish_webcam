@@ -32,7 +32,9 @@ try:
     from .particles_effect import salute_pose, salute_reference
     from .modes import MODES, FrameInfo, Mode
     from .call_audio import MIC_DESCRIPTION, CallSound, VirtualMic
-    from .control_panel import ACCENTS, AMBER, FONT_DIR, FONTS, GREEN, MODE_CARDS, ControlPanel, PanelView
+    from .control_panel import (
+        ACCENTS, AMBER, FONT_DIR, FONTS, GREEN, MODE_CARDS, ControlPanel, PanelView, font_file,
+    )
     from .i18n import LANGUAGES, set_language, t
     from .user_data import Settings, UserData
 except ImportError:
@@ -44,7 +46,9 @@ except ImportError:
     from particles_effect import salute_pose, salute_reference
     from modes import MODES, FrameInfo, Mode
     from call_audio import MIC_DESCRIPTION, CallSound, VirtualMic
-    from control_panel import ACCENTS, AMBER, FONT_DIR, FONTS, GREEN, MODE_CARDS, ControlPanel, PanelView
+    from control_panel import (
+        ACCENTS, AMBER, FONT_DIR, FONTS, GREEN, MODE_CARDS, ControlPanel, PanelView, font_file,
+    )
     from i18n import LANGUAGES, set_language, t
     from user_data import Settings, UserData
 
@@ -80,6 +84,10 @@ BACKGROUND_UPDATE_RATE = 0.2
 # Exposure gain measured where the person is absent (needs at least 10% of the image).
 EXPOSURE_MIN_FREE_FRACTION = 0.1
 EXPOSURE_GAIN_RANGE = (0.5, 2.0)
+# Failed reads for this long mean the webcam is gone (one dropped frame is normal);
+# then it is reopened every CAMERA_RETRY_SECONDS until it is back.
+CAMERA_LOST_SECONDS = 0.5
+CAMERA_RETRY_SECONDS = 1.0
 
 
 @dataclass
@@ -218,6 +226,137 @@ def open_camera(index: int, width: int, height: int) -> cv2.VideoCapture:
     capture.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
     capture.set(cv2.CAP_PROP_BUFFERSIZE, 1)
     return capture
+
+
+class CameraReopener:
+    """Reopen the webcam in a thread: opening can block for seconds, the video must not."""
+
+    def __init__(self, open_capture: Callable[[], cv2.VideoCapture], retry_seconds: float):
+        self.open_capture = open_capture
+        self.retry_seconds = retry_seconds
+        self.lock = threading.Lock()
+        self.stopping = threading.Event()
+        self.result: tuple[cv2.VideoCapture, np.ndarray] | None = None
+        self.thread = threading.Thread(target=self._run, name="camera-reopen", daemon=True)
+        self.thread.start()
+
+    def _run(self) -> None:
+        while not self.stopping.is_set():
+            try:
+                capture = self.open_capture()
+            except (RuntimeError, cv2.error):
+                capture = None
+            if capture is not None:
+                ok, frame = capture.read()
+                if ok and frame is not None:
+                    with self.lock:
+                        self.result = (capture, frame)
+                    return
+                capture.release()
+            self.stopping.wait(self.retry_seconds)
+
+    def take(self) -> tuple[cv2.VideoCapture, np.ndarray] | None:
+        with self.lock:
+            result, self.result = self.result, None
+            return result
+
+    def close(self) -> None:
+        self.stopping.set()
+        self.thread.join(timeout=5.0)
+        reopened = self.take()
+        if reopened is not None:
+            reopened[0].release()
+
+
+class CameraFeed:
+    """The webcam, reopened in the background when it stops sending images (unplugged, taken by another app).
+
+    read() returns None instead of failing: first for a short grace period (a single
+    dropped frame is common), then while CameraReopener retries. The first open stays
+    synchronous, so a missing webcam at startup is still reported as an error.
+    """
+
+    def __init__(self, open_capture: Callable[[], cv2.VideoCapture],
+                 lost_after: float = CAMERA_LOST_SECONDS, retry_seconds: float = CAMERA_RETRY_SECONDS):
+        self.open_capture = open_capture
+        self.lost_after = lost_after
+        self.retry_seconds = retry_seconds
+        self.capture = open_capture()
+        self.failing_since: float | None = None
+        self.lost_since: float | None = None
+        self.reopener: CameraReopener | None = None
+
+    @property
+    def reconnecting(self) -> bool:
+        return self.reopener is not None
+
+    def read(self) -> np.ndarray | None:
+        if self.reopener is not None:
+            reopened = self.reopener.take()
+            if reopened is None:
+                return None
+            self.capture, frame = reopened
+            self.reopener = None
+            self.lost_since = None
+            return frame
+        ok, frame = self.capture.read()
+        if ok and frame is not None:
+            self.failing_since = None
+            return frame
+        now = time.perf_counter()
+        if self.failing_since is None:
+            self.failing_since = now
+        elif now - self.failing_since >= self.lost_after:
+            self.capture.release()
+            self.failing_since = None
+            self.lost_since = now
+            self.reopener = CameraReopener(self.open_capture, self.retry_seconds)
+        return None
+
+    def release(self) -> None:
+        if self.reopener is not None:
+            self.reopener.close()
+            self.reopener = None
+        self.capture.release()
+
+
+def reconnecting_card(base: np.ndarray, title: str, detail: str, lamp_on: bool) -> np.ndarray:
+    """The frame sent while the webcam is gone: the last image, blurred and dimmed, with a status line.
+
+    base is already blurred and dimmed (once, when the webcam was lost); the text is
+    drawn with the panel's fonts, which also cover accented letters.
+    """
+    from PIL import Image, ImageDraw, ImageFont
+
+    height, width = base.shape[:2]
+    image = Image.fromarray(np.ascontiguousarray(base[..., ::-1]))
+    draw = ImageDraw.Draw(image)
+    unit = height / 720
+
+    def face(style: str, size: float):
+        name = font_file(style)
+        return ImageFont.truetype(name, round(size * unit)) if name else ImageFont.load_default(size * unit)
+
+    big, small = face("title", 40), face("mono", 20)
+    lamp = round(16 * unit)
+    title_width = draw.textlength(title, font=big)
+    x = (width - title_width - lamp * 2) / 2
+    y = height / 2
+    draw.rectangle(
+        [x, y - lamp / 2 - 4 * unit, x + lamp, y + lamp / 2 - 4 * unit],
+        fill=AMBER if lamp_on else None, outline=AMBER, width=max(1, round(2 * unit)),
+    )
+    draw.text((x + lamp * 2, y), title, font=big, fill=(244, 242, 237), anchor="lm")
+    draw.text((width / 2, y + 44 * unit), detail, font=small, fill=(190, 185, 175), anchor="mm")
+    return cv2.cvtColor(np.asarray(image), cv2.COLOR_RGB2BGR)
+
+
+def dim_for_card(frame: np.ndarray | None, width: int, height: int) -> np.ndarray:
+    if frame is None:
+        return np.full((height, width, 3), 26, np.uint8)
+    small = cv2.resize(frame, (max(1, width // 8), max(1, height // 8)), interpolation=cv2.INTER_AREA)
+    blurred = cv2.resize(cv2.GaussianBlur(small, (0, 0), 3), (width, height), interpolation=cv2.INTER_LINEAR)
+    return cv2.convertScaleAbs(blurred, alpha=0.35)
 
 
 def create_segmenter() -> vision.ImageSegmenter:
@@ -881,7 +1020,11 @@ KEY_ACTIONS = {
 MESSAGE_SECONDS = 6.0
 
 
-def panel_status(phase: str, mode: Mode, calibration_remaining: int | None) -> tuple[str, tuple[int, int, int]]:
+def panel_status(
+    phase: str, mode: Mode, calibration_remaining: int | None, reconnecting: bool = False,
+) -> tuple[str, tuple[int, int, int]]:
+    if reconnecting:
+        return t("status.reconnecting"), AMBER
     if phase == "calibrating":
         return t("status.calibrating", seconds=calibration_remaining or 0), AMBER
     if mode.phase in ("vanishing", "vanished", "appearing"):
@@ -908,9 +1051,14 @@ def run_camera(args: argparse.Namespace, resources: ExitStack, mode_name: str | 
     gallery = tuple(user_data.gallery())
 
     download_models(mode_name)
-    capture = open_camera(args.camera, args.width, args.height)
-    resources.callback(capture.release)
-    capture.set(cv2.CAP_PROP_FPS, args.fps)
+
+    def open_capture() -> cv2.VideoCapture:
+        capture = open_camera(args.camera, args.width, args.height)
+        capture.set(cv2.CAP_PROP_FPS, args.fps)
+        return capture
+
+    camera = CameraFeed(open_capture)
+    resources.callback(camera.release)
     segmenter = create_segmenter()
     resources.callback(segmenter.close)
     segment = PersonSegmenter(segmenter)
@@ -1034,90 +1182,118 @@ def run_camera(args: argparse.Namespace, resources: ExitStack, mode_name: str | 
             state.fullscreen = not state.fullscreen
             set_fullscreen(state.fullscreen)
 
+    card_base: np.ndarray | None = None  # Last image sent, dimmed: background of the reconnecting card.
+    card: tuple[tuple[int, bool], np.ndarray] | None = None
+    last_display: np.ndarray | None = None
     try:
         while True:
-            ok, frame = capture.read()
-            if not ok:
-                raise RuntimeError(t("camera.stopped"))
-
-            if not args.no_mirror:
-                frame = cv2.flip(frame, 1)
-
-            height, width = frame.shape[:2]
-            if not virtual_camera_initialized:
-                # The webcam may not support the requested resolution: fit the
-                # window to the real one, without stretching the image.
-                print(f"[VanishCam] {t('camera.resolution', width=width, height=height)}")
-                if (width, height) != (args.width, args.height):
-                    cv2.resizeWindow(WINDOW_NAME, width, height)
-                virtual_camera = open_virtual_camera(args, width, height)
-                virtual_camera_initialized = True
-                if virtual_camera is not None:
-                    resources.callback(virtual_camera.close)
-                if background_source is not None:
-                    background = fit_background(background_source, width, height)
+            frame = camera.read()
             now = time.perf_counter()
-            elapsed_ms = int((now - started) * 1000)
-            camera_frame = frame
             mode = effect.mode
-            if background_source is not None:
-                # The mask stays cached for this timestamp: the effects reuse it.
-                frame = replace_background(frame, background, segment(frame, elapsed_ms))
-
-            if state.phase == "calibrating":
-                elapsed = now - state.calibration_started
-                remaining = max(0, int(np.ceil(CALIBRATION_SECONDS - elapsed)))
-                if remaining != calibration_remaining:
-                    print(f"[VanishCam] {t('loop.capturing', seconds=remaining)}")
-                    calibration_remaining = remaining
-                if elapsed >= CALIBRATION_SECONDS - BACKGROUND_SAMPLE_SECONDS:
-                    background_samples.append(frame.copy())
-                if elapsed >= CALIBRATION_SECONDS:
-                    if background_samples:
-                        stack = np.stack(background_samples[-18:], axis=0)
-                        background = np.median(stack, axis=0).astype(np.uint8)
-                    else:
-                        background = frame.copy()
-                    background_samples.clear()
-                    real_background = background
-                    panel.set_real_background(background)
-                    state.phase = "running"
-                    mode.reset()
-                    print(f"[VanishCam] {t('loop.background_ready')}")
-                display = frame
-
+            if frame is None and not camera.reconnecting:
+                # A dropped frame, or the first ones after opening: wait for the next one.
+                time.sleep(0.01)
+                continue
+            if frame is None:
+                if card_base is None:
+                    print(f"[VanishCam] {t('camera.lost')}")
+                    card_base = dim_for_card(last_display, width or args.width, height or args.height)
+                lost = now - camera.lost_since
+                # Redrawn only when the seconds or the blinking lamp change.
+                seconds, lamp_on = int(lost), int(lost * 2) % 2 == 0
+                if card is None or card[0] != (seconds, lamp_on):
+                    card = (seconds, lamp_on), reconnecting_card(
+                        card_base, t("reconnect.title"), t("reconnect.detail", index=args.camera, seconds=seconds), lamp_on,
+                    )
+                display = card[1]
             else:
-                if (
-                    mode.detecting
-                    and now - state.last_gesture_check >= mode.detect_interval
-                    and not effect.detector.busy
-                ):
-                    state.last_gesture_check = now
-                    effect.detector.submit(mode.detection_image(camera_frame), elapsed_ms)
-                detected = effect.detector.take_result()
-                if detected is not None and mode.detecting:
-                    mode.on_detection(detected[0], now)
-                    if args.gesture_debug and now - last_gesture_report >= 1.0:
-                        print(f"[Gesture] {detector_status(effect.recognizer, detected[0])}")
-                        last_gesture_report = now
-                display = mode.render(FrameInfo(frame, background, now, elapsed_ms))
+                if card_base is not None:
+                    print(f"[VanishCam] {t('camera.back')}")
+                    card_base = card = None
+                    if state.phase == "calibrating":
+                        # The samples taken before the webcam was lost may be stale.
+                        start_calibration(now)
+                if not args.no_mirror:
+                    frame = cv2.flip(frame, 1)
 
-                # The background follows light and small movements, even while invisible.
-                if (
-                    not args.static_background
-                    and background_source is None
-                    and mode.phase in ("ready", "vanished")
-                    and now - state.last_background_update >= BACKGROUND_UPDATE_SECONDS
-                ):
-                    state.last_background_update = now
-                    background = update_background(background, frame, segment(frame, elapsed_ms))
-                    real_background = background
-                    mode.background_changed()
+                if not virtual_camera_initialized:
+                    height, width = frame.shape[:2]
+                    # The webcam may not support the requested resolution: fit the
+                    # window to the real one, without stretching the image.
+                    print(f"[VanishCam] {t('camera.resolution', width=width, height=height)}")
+                    if (width, height) != (args.width, args.height):
+                        cv2.resizeWindow(WINDOW_NAME, width, height)
+                    virtual_camera = open_virtual_camera(args, width, height)
+                    virtual_camera_initialized = True
+                    if virtual_camera is not None:
+                        resources.callback(virtual_camera.close)
+                    if background_source is not None:
+                        background = fit_background(background_source, width, height)
+                elif frame.shape[:2] != (height, width):
+                    # Reopened at another resolution: keep the one the virtual webcam and background use.
+                    frame = cv2.resize(frame, (width, height), interpolation=cv2.INTER_AREA)
+                elapsed_ms = int((now - started) * 1000)
+                camera_frame = frame
+                if background_source is not None:
+                    # The mask stays cached for this timestamp: the effects reuse it.
+                    frame = replace_background(frame, background, segment(frame, elapsed_ms))
+
+                if state.phase == "calibrating":
+                    elapsed = now - state.calibration_started
+                    remaining = max(0, int(np.ceil(CALIBRATION_SECONDS - elapsed)))
+                    if remaining != calibration_remaining:
+                        print(f"[VanishCam] {t('loop.capturing', seconds=remaining)}")
+                        calibration_remaining = remaining
+                    if elapsed >= CALIBRATION_SECONDS - BACKGROUND_SAMPLE_SECONDS:
+                        background_samples.append(frame.copy())
+                    if elapsed >= CALIBRATION_SECONDS:
+                        if background_samples:
+                            stack = np.stack(background_samples[-18:], axis=0)
+                            background = np.median(stack, axis=0).astype(np.uint8)
+                        else:
+                            background = frame.copy()
+                        background_samples.clear()
+                        real_background = background
+                        panel.set_real_background(background)
+                        state.phase = "running"
+                        mode.reset()
+                        print(f"[VanishCam] {t('loop.background_ready')}")
+                    display = frame
+
+                else:
+                    if (
+                        mode.detecting
+                        and now - state.last_gesture_check >= mode.detect_interval
+                        and not effect.detector.busy
+                    ):
+                        state.last_gesture_check = now
+                        effect.detector.submit(mode.detection_image(camera_frame), elapsed_ms)
+                    detected = effect.detector.take_result()
+                    if detected is not None and mode.detecting:
+                        mode.on_detection(detected[0], now)
+                        if args.gesture_debug and now - last_gesture_report >= 1.0:
+                            print(f"[Gesture] {detector_status(effect.recognizer, detected[0])}")
+                            last_gesture_report = now
+                    display = mode.render(FrameInfo(frame, background, now, elapsed_ms))
+
+                    # The background follows light and small movements, even while invisible.
+                    if (
+                        not args.static_background
+                        and background_source is None
+                        and mode.phase in ("ready", "vanished")
+                        and now - state.last_background_update >= BACKGROUND_UPDATE_SECONDS
+                    ):
+                        state.last_background_update = now
+                        background = update_background(background, frame, segment(frame, elapsed_ms))
+                        real_background = background
+                        mode.background_changed()
+
+                last_display = display
 
             if virtual_camera is not None:
                 send_virtual_frame(virtual_camera, display)
             cv2.imshow(WINDOW_NAME, display)
-            status, status_color = panel_status(state.phase, mode, calibration_remaining)
+            status, status_color = panel_status(state.phase, mode, calibration_remaining, camera.reconnecting)
             panel.show(PanelView(
                 mode=effect.name, status=status, status_color=status_color, background=chosen,
                 gallery=gallery, manual_keys=mode.manual_keys, can_recapture=background_source is None,
@@ -1134,6 +1310,8 @@ def run_camera(args: argparse.Namespace, resources: ExitStack, mode_name: str | 
                 handle(action, now)
             if virtual_camera is not None:
                 virtual_camera.sleep_until_next_frame()
+            elif frame is None:
+                time.sleep(1 / args.fps)
     finally:
         resources.close()
 

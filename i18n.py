@@ -108,7 +108,10 @@ STRINGS: dict[str, dict[str, str]] = {
         # Startup, camera and models.
         "error": "ERROR: {error}",
         "camera.unavailable": "Webcam {index} is unavailable. Close other apps using the camera or try --camera 1.",
-        "camera.stopped": "The webcam stopped sending images.",
+        "camera.lost": "The webcam stopped sending images: trying to reconnect...",
+        "camera.back": "Webcam reconnected.",
+        "reconnect.title": "RECONNECTING THE CAMERA",
+        "reconnect.detail": "Webcam {index} · trying for {seconds} s",
         "camera.resolution": "Resolution: {width}x{height}",
         "virtual.unavailable": (
             "Virtual webcam unavailable. On Linux, load v4l2loopback (see the README); "
@@ -140,6 +143,7 @@ STRINGS: dict[str, dict[str, str]] = {
         "status.vanishing": "Vanishing…",
         "status.vanished": "Invisible",
         "status.appearing": "Reappearing…",
+        "status.reconnecting": "Reconnecting the camera…",
         # Panel.
         "panel.effect": "EFFECT",
         "panel.background": "BACKGROUND",
@@ -214,7 +218,10 @@ STRINGS: dict[str, dict[str, str]] = {
         "cli.fps_range": "O FPS deve estar entre 1 e 120.",
         "error": "ERRO: {error}",
         "camera.unavailable": "Webcam {index} indisponível. Feche outros apps que usam a câmera ou tente --camera 1.",
-        "camera.stopped": "A webcam parou de enviar imagens.",
+        "camera.lost": "A webcam parou de enviar imagens: tentando reconectar...",
+        "camera.back": "Webcam reconectada.",
+        "reconnect.title": "RECONECTANDO A CÂMERA",
+        "reconnect.detail": "Webcam {index} · tentando há {seconds} s",
         "camera.resolution": "Resolução: {width}x{height}",
         "virtual.unavailable": (
             "Webcam virtual indisponível. No Linux, carregue o v4l2loopback (veja o README); "
@@ -244,6 +251,7 @@ STRINGS: dict[str, dict[str, str]] = {
         "status.vanishing": "Sumindo…",
         "status.vanished": "Invisível",
         "status.appearing": "Reaparecendo…",
+        "status.reconnecting": "Reconectando a câmera…",
         "panel.effect": "EFEITO",
         "panel.background": "FUNDO",
         "panel.controls": "CONTROLES",
