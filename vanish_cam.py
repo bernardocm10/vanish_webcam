@@ -130,6 +130,10 @@ def parse_args() -> argparse.Namespace:
         help="Não atualiza o fundo depois da calibração (como nas versões antigas)",
     )
     parser.add_argument(
+        "--background-image", type=Path, metavar="ARQUIVO",
+        help="Troca o fundo real por esta imagem (JPG/PNG): sem calibração, você some revelando a imagem",
+    )
+    parser.add_argument(
         "--gesture-debug", action="store_true",
         help="Mostra no terminal o estado do reconhecimento do gesto (sem texto no vídeo)",
     )
@@ -387,6 +391,32 @@ def person_mask(
         resized = cv2.resize(raw, (width, height), interpolation=cv2.INTER_LINEAR)
         resized = cv2.GaussianBlur(resized, (0, 0), sigmaX=2.2, sigmaY=2.2)
     return np.clip((resized - 0.12) / 0.68, 0.0, 1.0)
+
+
+def load_background_image(path: Path) -> np.ndarray:
+    image = cv2.imread(str(path), cv2.IMREAD_COLOR)
+    if image is None:
+        raise RuntimeError(f"Não foi possível abrir a imagem de fundo: {path}")
+    return image
+
+
+def fit_background(image: np.ndarray, width: int, height: int) -> np.ndarray:
+    """Cobre todo o quadro sem distorcer: escala e corta o excesso no centro."""
+    src_height, src_width = image.shape[:2]
+    scale = max(width / src_width, height / src_height)
+    scaled_width = max(width, round(src_width * scale))
+    scaled_height = max(height, round(src_height * scale))
+    interpolation = cv2.INTER_AREA if scale < 1 else cv2.INTER_LINEAR
+    scaled = cv2.resize(image, (scaled_width, scaled_height), interpolation=interpolation)
+    x = (scaled_width - width) // 2
+    y = (scaled_height - height) // 2
+    return np.ascontiguousarray(scaled[y : y + height, x : x + width])
+
+
+def replace_background(frame: np.ndarray, background: np.ndarray, mask: np.ndarray) -> np.ndarray:
+    """Mantém só a pessoa do frame e coloca a imagem escolhida atrás dela."""
+    alpha = mask[..., None]
+    return (frame * alpha + background * (1.0 - alpha)).astype(np.uint8)
 
 
 def update_background(
@@ -881,6 +911,11 @@ def run_camera(args: argparse.Namespace, resources: ExitStack, mode_name: str) -
     resources.callback(segmenter.close)
     detector = AsyncRecognizer(detection_function(mode_name, recognizer), recognizer.close)
     resources.callback(detector.close)
+    background_image = (
+        load_background_image(args.background_image)
+        if getattr(args, "background_image", None) is not None
+        else None
+    )
     sound = open_sound(mode_name, open_call_mic(args, resources))
     if sound is not None:
         resources.callback(sound.close)
@@ -901,12 +936,18 @@ def run_camera(args: argparse.Namespace, resources: ExitStack, mode_name: str) -
     calibration_remaining = None
     last_gesture_report = float("-inf")
     started = state.calibration_started
-    print("[Webcam] Saia da frente da câmera por 4 segundos: capturando o fundo.")
-    print(f"[{mode.name.capitalize()}] {mode.instructions}")
-    if mode.manual_keys:
-        print("[Webcam] Teclas na janela: ESPAÇO novo fundo, R reaparecer, V sumir, F tela cheia, Q sair.")
+    if background_image is None:
+        print("[Webcam] Saia da frente da câmera por 4 segundos: capturando o fundo.")
     else:
-        print("[Webcam] Teclas na janela: ESPAÇO novo fundo, F tela cheia, Q sair.")
+        # A imagem e' o fundo: niente calibrazione.
+        state.phase = "running"
+        print(f"[Webcam] Fundo: {args.background_image}")
+    print(f"[{mode.name.capitalize()}] {mode.instructions}")
+    space_key = "ESPAÇO novo fundo, " if background_image is None else ""
+    if mode.manual_keys:
+        print(f"[Webcam] Teclas na janela: {space_key}R reaparecer, V sumir, F tela cheia, Q sair.")
+    else:
+        print(f"[Webcam] Teclas na janela: {space_key}F tela cheia, Q sair.")
 
     try:
         while True:
@@ -928,8 +969,14 @@ def run_camera(args: argparse.Namespace, resources: ExitStack, mode_name: str) -
                 virtual_camera_initialized = True
                 if virtual_camera is not None:
                     resources.callback(virtual_camera.close)
+                if background_image is not None:
+                    background = fit_background(background_image, width, height)
             now = time.perf_counter()
             elapsed_ms = int((now - started) * 1000)
+            camera_frame = frame
+            if background_image is not None:
+                # La maschera resta in cache per questo timestamp: gli effetti la riusano.
+                frame = replace_background(frame, background, segment(frame, elapsed_ms))
 
             if state.phase == "calibrating":
                 elapsed = now - state.calibration_started
@@ -958,7 +1005,7 @@ def run_camera(args: argparse.Namespace, resources: ExitStack, mode_name: str) -
                     and not detector.busy
                 ):
                     state.last_gesture_check = now
-                    detector.submit(mode.detection_image(frame), elapsed_ms)
+                    detector.submit(mode.detection_image(camera_frame), elapsed_ms)
                 detected = detector.take_result()
                 if detected is not None and mode.detecting:
                     mode.on_detection(detected[0], now)
@@ -970,6 +1017,7 @@ def run_camera(args: argparse.Namespace, resources: ExitStack, mode_name: str) -
                 # Lo sfondo segue luce e piccoli spostamenti, anche da invisibili.
                 if (
                     not args.static_background
+                    and background_image is None
                     and mode.phase in ("ready", "vanished")
                     and now - state.last_background_update >= BACKGROUND_UPDATE_SECONDS
                 ):
@@ -985,7 +1033,7 @@ def run_camera(args: argparse.Namespace, resources: ExitStack, mode_name: str) -
             running = state.phase == "running"
             if key in (ord("q"), 27):
                 break
-            if key == ord(" "):
+            if key == ord(" ") and background_image is None:
                 state.phase = "calibrating"
                 state.calibration_started = now
                 background_samples.clear()

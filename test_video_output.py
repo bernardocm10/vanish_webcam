@@ -15,7 +15,7 @@ def arguments(**overrides):
     values = dict(
         camera=0, width=960, height=540, fps=30.0, fullscreen=False,
         no_mirror=True, virtual_camera=None, virtual_backend=None, virtual_device=None,
-        gesture_debug=False, mode="normal", static_background=False, call_audio=False,
+        gesture_debug=False, mode="normal", static_background=False, call_audio=False, background_image=None,
     )
     values.update(overrides)
     return argparse.Namespace(**values)
@@ -135,6 +135,42 @@ class VideoLoopTests(unittest.TestCase):
             camera.close.assert_called_once()
             destroy.assert_called_once()
         return frames, camera, displayed
+
+    def test_background_image_replaces_room_without_calibration(self):
+        capture = Mock()
+        frames = [np.full((24, 40, 3), 200, np.uint8) for _ in range(3)]
+        read, clock = video_clock(frames, (0, 0.1, 0.2))
+        capture.read.side_effect = read
+        mask = np.zeros((24, 40), np.float32)
+        mask[:, :20] = 1.0  # Persona a sinistra, stanza a destra.
+        displayed = []
+        with ExitStack() as mocks:
+            args = arguments(virtual_camera=False, background_image="beach.png")
+            mocks.enter_context(patch.object(app, "parse_args", return_value=args))
+            mocks.enter_context(patch.object(app, "download_models"))
+            mocks.enter_context(patch.object(app, "open_camera", return_value=capture))
+            mocks.enter_context(patch.object(app, "create_tasks", return_value=(Mock(), Mock())))
+            loaded = mocks.enter_context(patch.object(
+                app, "load_background_image", return_value=np.full((48, 80, 3), 30, np.uint8),
+            ))
+            mocks.enter_context(patch.object(app, "person_mask", return_value=mask))
+            mocks.enter_context(patch.object(app, "recognize_gesture", return_value=("No_Hand", 0.0)))
+            mocks.enter_context(patch.object(app, "AsyncRecognizer", InlineRecognizer))
+            mocks.enter_context(patch.object(app.time, "perf_counter", side_effect=clock))
+            mocks.enter_context(patch.object(app.cv2, "namedWindow"))
+            mocks.enter_context(patch.object(app.cv2, "resizeWindow"))
+            mocks.enter_context(patch.object(app.cv2, "destroyAllWindows"))
+            mocks.enter_context(patch.object(app.cv2, "imshow", side_effect=lambda name, frame: displayed.append(frame.copy())))
+            mocks.enter_context(patch.object(app.cv2, "waitKey", side_effect=(0, ord("v"), ord("q"))))
+            mocks.enter_context(patch("builtins.print"))
+            self.assertEqual(app.run(), 0)
+        loaded.assert_called_once_with("beach.png")
+        # Gia' dal primo frame: persona davanti all'immagine, niente calibrazione.
+        self.assertTrue((displayed[0][:, :20] == 200).all())
+        self.assertTrue((displayed[0][:, 20:] == 30).all())
+        # Dopo V la persona inizia a dissolversi nell'immagine, non nella stanza.
+        self.assertTrue((displayed[2][:, 20:] == 30).all())
+        self.assertLess(int(displayed[2][:, :20].min()), 200)
 
     def test_preview_and_virtual_output_are_clean_in_all_phases(self):
         frames, camera, displayed = self.run_mock_video()

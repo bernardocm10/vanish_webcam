@@ -6,7 +6,8 @@ import mediapipe as mp
 
 from modes import NormalMode
 from vanish_cam import (
-    MultiViewGestureRecognizer, recognize_gesture, update_background, victory_landmark_score,
+    MultiViewGestureRecognizer, fit_background, recognize_gesture, replace_background,
+    update_background, victory_landmark_score,
 )
 
 
@@ -186,6 +187,33 @@ class BackgroundUpdateTests(unittest.TestCase):
         np.testing.assert_array_equal(updated, self.background)
         bright = np.full((180, 320, 3), 255, dtype=np.uint8)
         np.testing.assert_array_equal(update_background(bright, self.frame, self.mask)[40:180, 140:180], 255)
+
+
+class BackgroundImageTests(unittest.TestCase):
+    def test_fit_covers_frame_without_stretching(self):
+        # Immagine 4:3 con una banda rossa in alto e in basso: in 16:9 vengono tagliate.
+        image = np.zeros((300, 400, 3), np.uint8)
+        image[:25] = (0, 0, 255)
+        image[-25:] = (0, 0, 255)
+        fitted = fit_background(image, 320, 180)
+        self.assertEqual(fitted.shape, (180, 320, 3))
+        self.assertEqual(int(fitted[:, :, 2].max()), 0)
+
+    def test_small_image_is_upscaled(self):
+        fitted = fit_background(np.full((10, 10, 3), 7, np.uint8), 64, 48)
+        self.assertEqual(fitted.shape, (48, 64, 3))
+        self.assertTrue(np.all(fitted == 7))
+
+    def test_person_stays_and_image_fills_the_rest(self):
+        frame = np.full((4, 4, 3), 200, np.uint8)
+        background = np.full((4, 4, 3), 10, np.uint8)
+        mask = np.zeros((4, 4), np.float32)
+        mask[:, :2] = 1.0
+        mask[0, 2] = 0.5
+        result = replace_background(frame, background, mask)
+        self.assertTrue(np.all(result[:, :2] == 200))
+        self.assertTrue(np.all(result[1:, 2:] == 10))
+        self.assertEqual(int(result[0, 2, 0]), 105)
 
 
 class MultiViewTests(unittest.TestCase):

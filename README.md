@@ -64,6 +64,20 @@ local_app\AVVIA_VIRTUAL.bat --virtual-backend unitycapture
 
 OBS has only one virtual camera. Do not use it as both an OBS input and output at the same time. See the [pyvirtualcam documentation](https://github.com/letmaik/pyvirtualcam#supported-virtual-cameras).
 
+## Custom background image
+
+To replace your real background with a picture, pass `--background-image` with a JPG or PNG file:
+
+```powershell
+local_app\AVVIA_LOCALE.bat --mode normal --background-image C:\Users\me\Pictures\beach.jpg
+```
+
+```bash
+./teams.sh --mode goku --background-image ~/Pictures/beach.jpg
+```
+
+The image fills the whole frame without being stretched (the excess is cropped from the center), and it is not mirrored. You appear in front of it, and when you vanish the image is what remains. There is no 4-second calibration, and the `SPACE` key does nothing in this mode. Turn off Teams' own background effects so they do not stack with this one.
+
 ## Controls
 
 - `SPACE`: capture a new background.
