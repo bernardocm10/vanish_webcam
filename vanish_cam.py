@@ -233,7 +233,7 @@ def create_segmenter() -> vision.ImageSegmenter:
 def create_recognizer(
     mode: str = "normal",
 ) -> MultiViewGestureRecognizer | MultiViewHandLandmarker | GokuPoseDetector:
-    if mode in ("goku", "particles"):
+    if mode in ("goku", "particles", "ash"):
         for model in (HAND_MODEL, FACE_MODEL):
             if not model.is_file():
                 raise RuntimeError(t("models.missing", path=model))
@@ -259,7 +259,7 @@ def create_recognizer(
         except Exception:
             face.close()
             raise
-        detector = SalutePoseDetector if mode == "particles" else GokuPoseDetector
+        detector = SalutePoseDetector if mode in ("particles", "ash") else GokuPoseDetector
         return detector(face, hands)
     if mode == "naruto":
         if not HAND_MODEL.is_file():
@@ -749,7 +749,7 @@ class PersonSegmenter:
 def detection_function(mode: str, recognizer) -> Callable[[mp.Image, int], object]:
     if mode == "naruto":
         return recognizer.recognize_joined_hands
-    if mode in ("goku", "particles"):
+    if mode in ("goku", "particles", "ash"):
         return recognizer.recognize_pose
     # Looked up on every call (not bound here) so the tests can replace it.
     return lambda image, timestamp_ms: recognize_gesture(recognizer, image, timestamp_ms)

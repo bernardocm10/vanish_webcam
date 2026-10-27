@@ -2,7 +2,7 @@
 
 [← Documentation](README.md)
 
-Pick an effect in the panel or with the keys `1`–`4`, then make its gesture in front of the camera. You can also press `V` to vanish and `R` to reappear without the gesture (except in Goku).
+Pick an effect in the panel or with the keys `1`–`5`, then make its gesture in front of the camera. You can also press `V` to vanish and `R` to reappear without the gesture (except in Goku).
 
 ## 1 · Normal
 
@@ -39,6 +39,12 @@ Comic-style vertical speed lines run across your silhouette just before you tele
 Fingers spread apart, bent, or with the ring and pinky folded (the Goku pose) do not count. After pressing `R`, lower your hand before saluting again.
 
 Your silhouette breaks into small colored fragments that drift sideways as if carried by the wind. The effect lasts about 2.1 seconds. Your silhouette is captured once when the effect starts, which keeps the video smooth. Press `R` to reappear.
+
+## 5 · Ash
+
+**Gesture:** the same salute as Particles.
+
+You freeze into a statue of grey ash, the ash spreading from your head down while keeping the shapes of your face. Then the statue crumbles, also from the head down: the grains fall to the floor, a cloud of dust rises, and a pile of ash grows where you stood. The pile stays until you press `R`. The whole effect lasts about 3.8 seconds; like Particles, your silhouette is captured once when it starts.
 
 ## How the effects are drawn
 

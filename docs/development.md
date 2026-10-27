@@ -15,8 +15,8 @@ From the project folder:
 | File | Responsibility |
 | --- | --- |
 | `vanish_cam.py` | Camera, background capture and updates, keyboard, virtual webcam output, and the main loop |
-| `modes.py` | One class per effect: `NormalMode`, `NarutoMode`, `GokuMode`, `ParticlesMode` |
-| `normal_effect.py`, `naruto_effect.py`, `goku_effect.py`, `particles_effect.py` | Drawing for each effect |
+| `modes.py` | One class per effect: `NormalMode`, `NarutoMode`, `GokuMode`, `ParticlesMode`, `AshMode` |
+| `normal_effect.py`, `naruto_effect.py`, `goku_effect.py`, `particles_effect.py`, `ash_effect.py` | Drawing for each effect |
 | `control_panel.py` | Draws the panel with Pillow and turns clicks into actions |
 | `user_data.py` | Saved preferences and the background gallery |
 | `call_audio.py`, `vanish_sound.py` | Effect sounds and the VanishCam Mic |

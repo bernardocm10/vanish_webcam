@@ -68,7 +68,7 @@ class ModeCard:
         return t(f"mode.{self.key}.hint")
 
 
-MODE_CARDS = tuple(ModeCard(key) for key in ("normal", "naruto", "goku", "particles"))
+MODE_CARDS = tuple(ModeCard(key) for key in ("normal", "naruto", "goku", "particles", "ash"))
 # While the effect runs the lamp turns red, like the tally of a camera on air.
 ACCENTS = {card.key: TALLY for card in MODE_CARDS}
 ADD_TILE = "add"

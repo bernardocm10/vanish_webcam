@@ -14,6 +14,7 @@ import cv2
 import numpy as np
 
 try:
+    from .ash_effect import EFFECT_SECONDS as ASH_EFFECT_SECONDS, make_ash, render_ash, render_remains
     from .goku_effect import (
         EFFECT_SECONDS as GOKU_EFFECT_SECONDS, HoldTracker, make_speed_lines,
         render_teleport, teleport_region,
@@ -30,6 +31,7 @@ try:
     )
     from .i18n import t
 except ImportError:
+    from ash_effect import EFFECT_SECONDS as ASH_EFFECT_SECONDS, make_ash, render_ash, render_remains
     from goku_effect import (
         EFFECT_SECONDS as GOKU_EFFECT_SECONDS, HoldTracker, make_speed_lines,
         render_teleport, teleport_region,
@@ -205,6 +207,45 @@ class ParticlesMode(Mode):
         return render_particles(info.background, self.cloud, elapsed)
 
 
+class AshMode(ParticlesMode):
+    """Same salute as Particles: the silhouette turns to ash, crumbles, and the pile stays until R."""
+
+    name = "ash"
+
+    def __init__(self, segment: Segment, sound=None):
+        super().__init__(segment, sound)
+        self.vanished_frame: np.ndarray | None = None
+
+    def vanish(self, now: float) -> None:
+        super().vanish(now)
+        self.vanished_frame = None
+
+    def reappear(self) -> None:
+        super().reappear()
+        self.vanished_frame = None
+
+    def background_changed(self) -> None:
+        self.vanished_frame = None
+
+    def render(self, info: FrameInfo) -> np.ndarray:
+        if self.phase == "ready":
+            return info.frame
+        if self.phase == "vanished":
+            if self.vanished_frame is None:
+                self.vanished_frame = (info.background if self.cloud is None
+                                       else render_remains(info.background, self.cloud))
+            return self.vanished_frame
+        # Silhouette captured once: the statue does not follow the person.
+        if self.cloud is None:
+            self.cloud = make_ash(info.frame, self.segment(info.frame, info.timestamp_ms))
+        elapsed = info.now - self.started
+        if elapsed >= ASH_EFFECT_SECONDS:
+            self.phase = "vanished"
+            self.vanished_frame = render_remains(info.background, self.cloud)
+            return self.vanished_frame
+        return render_ash(info.background, self.cloud, elapsed)
+
+
 class NarutoMode(Mode):
     name = "naruto"
     detect_interval = 0.08
@@ -335,4 +376,4 @@ class GokuMode(Mode):
         return display
 
 
-MODES: dict[str, type[Mode]] = {mode.name: mode for mode in (NormalMode, NarutoMode, ParticlesMode, GokuMode)}
+MODES: dict[str, type[Mode]] = {mode.name: mode for mode in (NormalMode, NarutoMode, ParticlesMode, GokuMode, AshMode)}

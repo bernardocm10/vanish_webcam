@@ -8,7 +8,7 @@ Pass them after the start command, for example `.venv/bin/python vanish_cam.py -
 
 | Option | What it does |
 | --- | --- |
-| `--mode normal\|naruto\|goku\|particles` | Effect to start with (default: the last one used) |
+| `--mode normal\|naruto\|goku\|particles\|ash` | Effect to start with (default: the last one used) |
 | `--background-image FILE` | Picture to start with as the background (default: the last one used) |
 | `--camera N` | Webcam number (default: 0) |
 | `--width`, `--height` | Requested resolution (default: 1280x720) |
