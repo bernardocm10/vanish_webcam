@@ -47,13 +47,13 @@ class VirtualMicTests(unittest.TestCase):
             process.terminate.assert_called_once()
 
     def test_refuses_to_loop_the_virtual_mic_into_itself(self):
-        with self.assertRaisesRegex(RuntimeError, "gia'"):
+        with self.assertRaisesRegex(RuntimeError, "já é"):
             VirtualMic(source=MIC_SOURCE)
         self.popen.assert_not_called()
 
     def test_missing_pipewire_tools(self):
         with patch.object(call_audio.shutil, "which", return_value=None):
-            with self.assertRaisesRegex(RuntimeError, "PipeWire non disponibile"):
+            with self.assertRaisesRegex(RuntimeError, "PipeWire indisponível"):
                 VirtualMic(source="alsa_input.headset")
 
     def test_default_source_reads_wpctl(self):

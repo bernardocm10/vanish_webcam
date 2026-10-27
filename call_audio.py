@@ -30,7 +30,7 @@ def default_source() -> str:
     ).stdout
     match = re.search(r'node\.name = "([^"]+)"', output)
     if match is None:
-        raise RuntimeError("Nessun microfono predefinito in PipeWire.")
+        raise RuntimeError("Nenhum microfone padrão no PipeWire.")
     return match.group(1)
 
 
@@ -45,12 +45,12 @@ class VirtualMic:
     def __init__(self, source: str | None = None):
         missing = [tool for tool in ("pw-loopback", "pw-play", "pw-cli", "wpctl") if shutil.which(tool) is None]
         if missing:
-            raise RuntimeError(f"PipeWire non disponibile (manca {', '.join(missing)}).")
+            raise RuntimeError(f"PipeWire indisponível (falta {', '.join(missing)}).")
         self.source = source or default_source()
         if self.source in (MIC_SOURCE, MIX_SINK):
-            raise RuntimeError(f"Il microfono predefinito e' gia' {MIC_DESCRIPTION}: scegline uno reale.")
+            raise RuntimeError(f"O microfone padrão já é o {MIC_DESCRIPTION}: escolha um microfone real.")
         if node_exists(MIX_SINK):
-            raise RuntimeError(f"{MIC_DESCRIPTION} esiste gia': chiudi l'altra istanza dell'app.")
+            raise RuntimeError(f"O {MIC_DESCRIPTION} já existe: feche a outra janela do VanishCam.")
         self.processes: list[subprocess.Popen] = []
         self.players: list[subprocess.Popen] = []
         try:
@@ -87,11 +87,11 @@ class VirtualMic:
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
             if any(process.poll() is not None for process in self.processes):
-                raise RuntimeError("pw-loopback si e' chiuso subito: controlla PipeWire.")
+                raise RuntimeError("O pw-loopback fechou logo ao abrir: verifique o PipeWire.")
             if node_exists(name):
                 return
             time.sleep(0.05)
-        raise RuntimeError(f"PipeWire non ha creato {name} in {timeout:g} s.")
+        raise RuntimeError(f"O PipeWire não criou {name} em {timeout:g} s.")
 
     def play(self, path: Path) -> None:
         """Send a sound into the call (the local speakers are handled by VanishSound)."""

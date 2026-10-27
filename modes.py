@@ -112,7 +112,7 @@ class VSignMode(Mode):
 
 class NormalMode(VSignMode):
     name = "normal"
-    instructions = "Segno a V con indice e medio: dissolvenza."
+    instructions = "Faça um V com indicador e médio: você se dissolve."
 
     def __init__(self, segment: Segment, sound=None):
         super().__init__(segment, sound)
@@ -146,7 +146,7 @@ class NormalMode(VSignMode):
 
 class ParticlesMode(VSignMode):
     name = "particles"
-    instructions = "Segno a V: la sagoma si sgretola in frammenti portati dal vento."
+    instructions = "Faça um V: você se desfaz em fragmentos levados pelo vento."
 
     def __init__(self, segment: Segment, sound=None):
         super().__init__(segment, sound)
@@ -179,7 +179,7 @@ class ParticlesMode(VSignMode):
 class NarutoMode(Mode):
     name = "naruto"
     detect_interval = 0.08
-    instructions = "Mani unite davanti alla webcam: fumo e tronco."
+    instructions = "Junte as palmas na frente da webcam: fumaça e tronco."
 
     def __init__(self, segment: Segment, sound=None):
         super().__init__(segment, sound)
@@ -237,7 +237,7 @@ class GokuMode(Mode):
     detect_interval = 0.066
     manual_keys = False
     detect_while_vanished = True
-    instructions = "Indice e medio uniti sulla fronte per 1 secondo: sparisci. Ripeti per riapparire."
+    instructions = "Indicador e médio juntos na testa por 1 segundo: você some. Repita para reaparecer."
 
     def __init__(self, segment: Segment, sound=None):
         super().__init__(segment, sound)
@@ -260,7 +260,7 @@ class GokuMode(Mode):
         remaining = self.hold.remaining(now)
         countdown = None if remaining is None else int(np.ceil(remaining * 4))
         if countdown is not None and countdown != self.countdown:
-            print(f"[Goku] Tieni la posa: {remaining:.2f}s")
+            print(f"[Goku] Segure a pose: {remaining:.2f}s")
         self.countdown = countdown
         if not fired:
             return
@@ -306,7 +306,7 @@ class GokuMode(Mode):
             self.mask = None
             self.mask_at = float("-inf")
             if vanishing:
-                print("[Goku] Sparito. Abbassa la mano, poi ripeti il gesto per riapparire.")
+                print("[Goku] Sumiu. Abaixe a mão e repita o gesto para reaparecer.")
         return display
 
 
