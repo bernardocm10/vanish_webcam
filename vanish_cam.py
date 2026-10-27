@@ -64,6 +64,9 @@ GESTURE_INTERVAL_SECONDS = 0.14
 MASK_EDGE_EPS = 40.0
 BACKGROUND_UPDATE_SECONDS = 0.5
 BACKGROUND_UPDATE_RATE = 0.2
+# Guadagno di esposizione stimato dove la persona e' assente (serve almeno il 10% dell'immagine).
+EXPOSURE_MIN_FREE_FRACTION = 0.1
+EXPOSURE_GAIN_RANGE = (0.5, 2.0)
 
 
 @dataclass
@@ -381,10 +384,14 @@ def update_background(
     mask: np.ndarray,
     rate: float = BACKGROUND_UPDATE_RATE,
 ) -> np.ndarray:
-    """Fondi il frame nello sfondo solo dove la persona e' sicuramente assente.
+    """Segui i cambi di luce senza ricalibrare e senza stampare la persona nello sfondo.
 
-    Segue i cambi di luce senza ricalibrare. Il margine attorno alla sagoma
-    evita che bordi incerti (mani, capelli) restino stampati nello sfondo.
+    L'esposizione automatica della webcam cambia tutta l'immagine (una persona
+    davanti a una finestra la fa schiarire): quel guadagno, misurato dove la
+    persona e' assente, si applica a tutto lo sfondo, anche dietro la sagoma.
+    Altrimenti la zona coperta resta ferma alla calibrazione e, da invisibili,
+    appare come un'ombra della persona. Il frame si fonde poi solo lontano dalla
+    sagoma: il margine evita che bordi incerti (mani, capelli) restino stampati.
     """
     height, width = mask.shape
     small_size = (max(1, width // 4), max(1, height // 4))
@@ -393,10 +400,31 @@ def update_background(
     grow = 2 * max(1, int(np.ceil(small_size[0] * 0.04))) + 1
     occupied = cv2.dilate(occupied, np.ones((grow, grow), np.uint8))
     hard_free = 1.0 - occupied.astype(np.float32)
+    background = apply_exposure_gain(background, frame, hard_free > 0, small_size)
     # La sfumatura resta tutta fuori dal margine: dentro il peso e' zero.
     free = cv2.GaussianBlur(hard_free, (0, 0), sigmaX=grow / 3.0) * hard_free
     weight = cv2.resize(free, (width, height), interpolation=cv2.INTER_NEAREST) * rate
     return cv2.blendLinear(frame, background, weight, 1.0 - weight)
+
+
+def apply_exposure_gain(
+    background: np.ndarray,
+    frame: np.ndarray,
+    free: np.ndarray,
+    small_size: tuple[int, int],
+) -> np.ndarray:
+    """Porta tutto lo sfondo all'esposizione attuale, canale per canale."""
+    small_bg = cv2.resize(background, small_size, interpolation=cv2.INTER_AREA).astype(np.float32)
+    small_frame = cv2.resize(frame, small_size, interpolation=cv2.INTER_AREA).astype(np.float32)
+    # Pixel saturi o quasi neri non dicono nulla sul guadagno.
+    valid = free & (small_bg.max(axis=2) < 250) & (small_frame.max(axis=2) < 250) & (small_bg.min(axis=2) > 8)
+    if np.count_nonzero(valid) < max(16, valid.size * EXPOSURE_MIN_FREE_FRACTION):
+        return background
+    gain = small_frame[valid].sum(axis=0) / small_bg[valid].sum(axis=0)
+    gain = np.clip(gain, EXPOSURE_GAIN_RANGE[0], EXPOSURE_GAIN_RANGE[1])
+    if np.all(np.abs(gain - 1.0) < 0.004):
+        return background
+    return cv2.convertScaleAbs(background * gain.astype(np.float32).reshape(1, 1, 3))
 
 
 def victory_landmark_score(points: np.ndarray) -> float:

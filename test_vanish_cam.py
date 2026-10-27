@@ -153,26 +153,39 @@ class ImmediateAnimationTests(unittest.TestCase):
 class BackgroundUpdateTests(unittest.TestCase):
     def setUp(self):
         self.background = np.full((180, 320, 3), 100, dtype=np.uint8)
-        self.frame = np.full((180, 320, 3), 200, dtype=np.uint8)
         self.mask = np.zeros((180, 320), dtype=np.float32)
         self.mask[40:180, 140:180] = 1.0
+        # Lo stesso sfondo ripreso con un'esposizione doppia, con la persona (scura) davanti.
+        self.frame = np.full((180, 320, 3), 200, dtype=np.uint8)
+        self.frame[40:180, 140:180] = 30
 
-    def test_far_from_person_background_moves_toward_frame(self):
+    def test_exposure_change_reaches_the_area_behind_the_person(self):
         updated = update_background(self.background, self.frame, self.mask, rate=0.5)
-        self.assertEqual(updated[5, 5].tolist(), [150, 150, 150])
+        # Niente ombra della persona: la zona coperta segue la nuova esposizione.
+        np.testing.assert_array_equal(updated[40:180, 140:180], 200)
+        self.assertEqual(updated[5, 5].tolist(), [200, 200, 200])
 
-    def test_person_and_safety_margin_never_leak_into_background(self):
-        updated = update_background(self.background, self.frame, self.mask, rate=0.5)
-        np.testing.assert_array_equal(updated[40:180, 140:180], self.background[40:180, 140:180])
+    def test_local_change_far_from_person_blends_and_person_never_leaks(self):
+        # Meta' piu' chiara e meta' piu' scura: la luce media non cambia (guadagno 1).
+        background = self.background.copy()
+        background[:, :160] = 50
+        background[:, 160:] = 150
+        frame = np.empty_like(background)
+        frame[:, :160] = 150
+        frame[:, 160:] = 50
+        frame[40:180, 140:180] = 30
+        updated = update_background(background, frame, self.mask, rate=0.5)
+        self.assertEqual(updated[5, 5].tolist(), [100, 100, 100])
+        np.testing.assert_array_equal(updated[40:180, 140:180], background[40:180, 140:180])
         margin = round(320 * 0.04)
-        np.testing.assert_array_equal(updated[100, 140 - margin:140], self.background[100, 140 - margin:140])
+        np.testing.assert_array_equal(updated[100, 140 - margin:140], background[100, 140 - margin:140])
 
-    def test_repeated_updates_follow_a_lighting_change(self):
-        background = self.background
-        for _ in range(40):
-            background = update_background(background, self.frame, self.mask)
-        # In uint8 ogni passo arrotonda: l'ultimo scarto di pochi livelli e' invisibile.
-        self.assertGreaterEqual(int(background[5, 5, 0]), 195)
+    def test_saturated_or_mostly_hidden_scenes_keep_the_background(self):
+        mask = np.ones((180, 320), dtype=np.float32)
+        updated = update_background(self.background, self.frame, mask)
+        np.testing.assert_array_equal(updated, self.background)
+        bright = np.full((180, 320, 3), 255, dtype=np.uint8)
+        np.testing.assert_array_equal(update_background(bright, self.frame, self.mask)[40:180, 140:180], 255)
 
 
 class MultiViewTests(unittest.TestCase):
