@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Atalho do menu: garante a webcam virtual e abre o VanishCam com o menu de modos.
+# Atalho do menu: garante a webcam virtual, pergunta a imagem de fundo (opcional)
+# e abre o VanishCam com o menu de modos.
 # Depois de reiniciar o PC a webcam virtual não existe: o sistema pede a senha
 # numa janela (pkexec) só para carregar o v4l2loopback.
 set -euo pipefail
@@ -16,7 +17,16 @@ if [ ! -e "$DEVICE" ]; then
   done
 fi
 
-if ! ./teams.sh "$@"; then
+# Escolha da imagem de fundo numa janela do GNOME; Cancelar mantém o fundo real.
+args=("$@")
+if [[ " $* " != *" --background-image "* ]] && command -v zenity >/dev/null; then
+  if image=$(zenity --file-selection --title="Imagem de fundo (Cancelar = fundo real)" \
+      --file-filter="Imagens | *.jpg *.jpeg *.png *.bmp *.webp *.JPG *.JPEG *.PNG" 2>/dev/null); then
+    args+=(--background-image "$image")
+  fi
+fi
+
+if ! ./teams.sh "${args[@]}"; then
   echo
   read -rp "O VanishCam fechou com erro. Pressione Enter para sair..."
 fi

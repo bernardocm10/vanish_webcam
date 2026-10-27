@@ -46,7 +46,7 @@ sudo modprobe v4l2loopback devices=1 video_nr=10 exclusive_caps=1 card_label="Va
 ./teams.sh --mode goku
 ```
 
-To get a **VanishCam** entry in the GNOME app menu, run `./install-launcher.sh` once. The entry runs `vanishcam-launcher.sh`, which asks for your password in a system dialog only when the virtual webcam is missing (after a reboot), then opens the mode menu.
+To get a **VanishCam** entry in the GNOME app menu, run `./install-launcher.sh` once. The entry runs `vanishcam-launcher.sh`, which asks for your password in a system dialog only when the virtual webcam is missing (after a reboot). It then opens a file picker for an optional background image (press **Cancel** to keep your real background; requires `zenity`, preinstalled on GNOME) and finally the mode menu.
 
 In Teams, choose **VanishCam** under **Settings → Devices → Camera**. Start the app before joining the call, and turn off Teams' own background effects.
 
