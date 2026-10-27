@@ -24,7 +24,7 @@ def arguments(**overrides):
 
 
 class InlineRecognizer:
-    """Come AsyncRecognizer ma nello stesso thread: risultati deterministici nei test."""
+    """Like AsyncRecognizer but on the same thread: deterministic results in tests."""
 
     busy = False
 
@@ -43,7 +43,7 @@ class InlineRecognizer:
 
 
 class FakePanel:
-    """Pannello senza finestra: registra le viste e restituisce un'azione per frame."""
+    """A panel without a window: records the views and returns one action per frame."""
 
     def __init__(self, actions=()):
         self.actions = list(actions)
@@ -66,7 +66,7 @@ class FakePanel:
 
 
 def app_mocks(mocks, segmenter, recognizer, actions=()):
-    """Modelli finti, pannello finto e preferenze in una cartella temporanea."""
+    """Fake models, a fake panel and preferences in a temporary folder."""
     mocks.enter_context(patch.object(app, "create_segmenter", return_value=segmenter))
     mocks.enter_context(patch.object(app, "create_recognizer", return_value=recognizer))
     panel = FakePanel(actions)
@@ -78,7 +78,7 @@ def app_mocks(mocks, segmenter, recognizer, actions=()):
 
 
 def video_clock(frames, times):
-    """capture.read e perf_counter finti: ogni frame letto porta il suo istante."""
+    """Fake capture.read and perf_counter: each frame read brings its own instant."""
     clock = [times[0]]
     queue = list(zip(frames, times))
 
