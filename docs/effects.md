@@ -12,9 +12,14 @@ You dissolve into the background. The effect starts as soon as the gesture is re
 
 ## 2 · Naruto
 
-**Gesture:** press your palms together in front of the webcam, fingers pointing up and side by side (not interlaced), and hold for a moment (a fifth of a second). Keep both hands visible.
+**Gesture:** either of these, held for a moment (a fifth of a second), with both hands visible:
 
-Open hands that are only close to each other do not count: the palms, wrists, and fingertips must touch. After pressing `R`, separate your hands before doing the gesture again.
+- **Palms together:** press your palms together in front of the webcam, fingers pointing up and side by side.
+- **Hands clasped:** interlace your fingers, or clasp one hand with the other, so that each hand's fingertips wrap around to the other hand's knuckles.
+
+Open hands that are only close to each other do not count, and neither do two fists touching. For palms together, the palms, wrists, and fingertips must be close: the hand tracker is not pixel accurate, so a gap of a couple of centimeters still counts. After pressing `R`, separate your hands before doing the gesture again.
+
+When the fingers are interlaced, one hand often hides the other and the tracker may see only one: turn your hands a little towards the camera. `--gesture-debug` shows how many hands it sees and which seal matched (`seal=palms` or `seal=clasped`).
 
 You vanish in a cloud of smoke and a wooden log appears, falls, and stays in your place until you press `R`. After that you can do it again.
 

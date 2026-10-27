@@ -20,34 +20,63 @@ HOLD_SECONDS = 0.2
 LOG_PATH = Path(__file__).resolve().parent / "assets" / "substitution_log.png"
 
 
-def joined_hands_from_landmarks(hands, width: int, height: int) -> bool:
-    """Recognize two palms pressed together: wrists, palms and fingertips touching, fingers parallel.
+# Clasped hands: each hand's fingertips wrap around to the other hand's knuckles.
+# Measured on a photo of clasped hands: 0.2 hand sizes (0.7 from their own knuckles);
+# open or pressed hands stay above 1.
+CLASP_REACH = 0.6
+# Interlaced fingers put the knuckle rows side by side, so the wrists can be two hands apart.
+CLASP_MAX_WRISTS = 3.0
+CLASP_MAX_PALMS = 1.4
+
+
+def hand_seal_from_landmarks(hands, width: int, height: int) -> str | None:
+    """Which hand seal two hands make: "palms" (pressed together), "clasped" (fingers interlaced), or None.
 
     Distances are in hand sizes (wrist to middle knuckle), so they work at any distance from the camera.
     """
     if len(hands) < 2:
-        return False
+        return None
     points = [np.array([(p.x * width, p.y * height) for p in hand])
               for hand in hands[:2] if len(hand) == 21]
     if len(points) != 2 or not all(np.isfinite(hand).all() for hand in points):
-        return False
-    palms = [hand[[0, 5, 9, 13, 17]].mean(axis=0) for hand in points]
+        return None
     scale = [max(float(np.linalg.norm(hand[5] - hand[17])),
                  float(np.linalg.norm(hand[0] - hand[9]))) for hand in points]
     if min(scale) < 8.0 or max(scale) > min(scale) * 2.2:
-        return False
+        return None
     size = sum(scale) * 0.5
+    palms = [hand[[0, 5, 9, 13, 17]].mean(axis=0) for hand in points]
+    knuckles = [hand[[5, 9, 13, 17]].mean(axis=0) for hand in points]
+    fingertips = [hand[[8, 12, 16, 20]].mean(axis=0) for hand in points]
+    palm_gap = float(np.linalg.norm(palms[0] - palms[1])) / size
+    wrist_gap = float(np.linalg.norm(points[0][0] - points[1][0])) / size
     directions = [hand[9] - hand[0] for hand in points]
     alignment = float(np.dot(*directions) /
                       max(1e-6, np.linalg.norm(directions[0]) * np.linalg.norm(directions[1])))
-    fingertips = [hand[[8, 12, 16, 20]].mean(axis=0) for hand in points]
     # Two open hands side by side (before the gesture) stay almost a hand apart: not enough.
-    return (
+    if (
         alignment > 0.55
-        and np.linalg.norm(palms[0] - palms[1]) < size * 0.8
-        and np.linalg.norm(points[0][0] - points[1][0]) < size * 1.1
+        and palm_gap < 0.8
+        and wrist_gap < 1.1
         and np.linalg.norm(fingertips[0] - fingertips[1]) < size * 0.85
-    )
+    ):
+        return "palms"
+    # Both ways: fingertips resting on the back of the other hand alone is not a clasp. And closer to
+    # the other hand's knuckles than to their own: two fists touching (a fist bump) are not a clasp.
+    reach = [np.linalg.norm(fingertips[i] - knuckles[1 - i]) / size for i in (0, 1)]
+    own = [np.linalg.norm(fingertips[i] - knuckles[i]) / size for i in (0, 1)]
+    if (
+        max(reach) < CLASP_REACH
+        and all(other < mine for other, mine in zip(reach, own))
+        and wrist_gap < CLASP_MAX_WRISTS
+        and palm_gap < CLASP_MAX_PALMS
+    ):
+        return "clasped"
+    return None
+
+
+def joined_hands_from_landmarks(hands, width: int, height: int) -> bool:
+    return hand_seal_from_landmarks(hands, width, height) is not None
 
 
 def substitution_anchor(mask: np.ndarray) -> tuple[int, int, int]:

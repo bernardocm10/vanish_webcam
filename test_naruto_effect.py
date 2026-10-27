@@ -8,10 +8,24 @@ import numpy as np
 import vanish_cam as app
 from modes import NarutoMode
 from naruto_effect import (
-    EFFECT_SECONDS, falling_log_anchor, joined_hands_from_landmarks,
+    EFFECT_SECONDS, falling_log_anchor, hand_seal_from_landmarks, joined_hands_from_landmarks,
     landed_log_anchor, load_log, overlay_log, render_substitution, substitution_anchor,
 )
 from test_video_output import InlineRecognizer, app_mocks, arguments, video_clock
+
+
+PHOTO_CLASP = [[SimpleNamespace(x=x, y=y) for x, y in hand] for hand in (
+    [(0.4888, 0.5882), (0.5101, 0.5389), (0.5299, 0.4977), (0.5573, 0.4664), (0.5941, 0.4437),
+     (0.4463, 0.4416), (0.5024, 0.3985), (0.563, 0.3987), (0.6066, 0.4168), (0.4484, 0.4527),
+     (0.5182, 0.3979), (0.5841, 0.4043), (0.6221, 0.4296), (0.4628, 0.4762), (0.5212, 0.4141),
+     (0.5804, 0.4167), (0.6197, 0.4336), (0.486, 0.5069), (0.5201, 0.4814), (0.5667, 0.468),
+     (0.6056, 0.4635)],
+    [(0.6263, 0.6054), (0.5951, 0.5557), (0.5632, 0.5043), (0.53, 0.4653), (0.5089, 0.4327),
+     (0.6163, 0.4469), (0.5242, 0.3852), (0.4559, 0.3983), (0.4421, 0.4305), (0.621, 0.4507),
+     (0.5264, 0.3792), (0.4587, 0.3972), (0.4523, 0.4353), (0.6144, 0.4675), (0.5308, 0.3928),
+     (0.4649, 0.4035), (0.4582, 0.4343), (0.6032, 0.4917), (0.5368, 0.451), (0.4955, 0.4408),
+     (0.4898, 0.4524)],
+)]
 
 
 class JoinedHandsTests(unittest.TestCase):
@@ -110,6 +124,60 @@ class JoinedHandsTests(unittest.TestCase):
         rotated = [[SimpleNamespace(x=point.y, y=1 - point.x) for point in hand]
                    for hand in hands]
         self.assertTrue(joined_hands_from_landmarks(rotated, 480, 640))
+
+    def test_pressed_palms_are_the_palms_seal(self):
+        self.assertEqual(hand_seal_from_landmarks([self.hand(0.47), self.hand(0.53)], 640, 480), "palms")
+
+    def test_clasped_hands_from_a_real_photo(self):
+        # Hand Landmarker output on a photo of two clasped hands (452x678), thumbs up, fingers wrapped
+        # around the other hand. Each hand's fingertips sit 0.2 hand sizes from the other's knuckles.
+        self.assertIsNotNone(hand_seal_from_landmarks(PHOTO_CLASP, 452, 678))
+
+    @staticmethod
+    def interlaced(center=0.5, reach=0.03, curl=0.0):
+        """Own hands interlaced in front of the chest: wrists on the sides, knuckle rows side by side.
+
+        reach: how far past the other hand's knuckles the fingertips go; curl moves them back to their own.
+        """
+        hands = []
+        for side in (-1, 1):
+            wrist_x = center + side * 0.12
+            knuckle_x = center + side * 0.03
+            tip_x = center - side * reach + side * curl
+            points = [SimpleNamespace(x=(wrist_x + knuckle_x) / 2, y=0.6) for _ in range(21)]
+            points[0] = SimpleNamespace(x=wrist_x, y=0.6)
+            for index, offset in ((5, -0.05), (9, -0.017), (13, 0.017), (17, 0.05)):
+                points[index] = SimpleNamespace(x=knuckle_x, y=0.6 + offset)
+            for index, offset in ((8, -0.05), (12, -0.017), (16, 0.017), (20, 0.05)):
+                points[index] = SimpleNamespace(x=tip_x, y=0.6 + offset)
+            hands.append(points)
+        return hands
+
+    def test_interlaced_fingers_are_the_clasped_seal(self):
+        self.assertEqual(hand_seal_from_landmarks(self.interlaced(), 640, 480), "clasped")
+        self.assertEqual(hand_seal_from_landmarks(self.interlaced(center=0.3), 640, 480), "clasped")
+
+    def test_fist_bump_is_not_a_clasp(self):
+        # Fingers curled back into each palm: the tips stay closer to their own knuckles.
+        self.assertIsNone(hand_seal_from_landmarks(self.interlaced(reach=0.0, curl=0.045), 640, 480))
+
+    def test_fingers_on_the_back_of_the_other_hand_only_one_way_are_not_a_clasp(self):
+        left, right = self.interlaced()
+        open_right = self.interlaced(reach=-0.09)[1]  # Fingers stretched back, away from the other hand.
+        self.assertIsNone(hand_seal_from_landmarks([left, open_right], 640, 480))
+
+    def test_hands_far_apart_are_not_a_clasp(self):
+        left = self.interlaced(center=0.3)[0]
+        right = self.interlaced(center=0.7)[1]
+        self.assertIsNone(hand_seal_from_landmarks([left, right], 640, 480))
+
+    def test_debug_line_says_which_seal_matched(self):
+        primary, alternate = Mock(), Mock()
+        primary.detect_for_video.return_value = SimpleNamespace(hand_landmarks=self.interlaced())
+        recognizer = app.MultiViewHandLandmarker(primary, alternate)
+        image = app.mp.Image(image_format=app.mp.ImageFormat.SRGB, data=np.zeros((480, 640, 3), np.uint8))
+        self.assertTrue(recognizer.recognize_joined_hands(image, 100))
+        self.assertIn("seal=clasped", app.detector_status(recognizer, True))
 
     def test_recognizer_uses_two_hands_in_the_current_frame(self):
         primary, alternate = Mock(), Mock()
