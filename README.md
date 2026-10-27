@@ -75,6 +75,8 @@ The default resolution is 1280x720 (16:9), requested as MJPG so USB webcams can 
 local_app\AVVIA_LOCALE.bat --camera 1 --width 1280 --height 720 --fps 30
 ```
 
+After calibration the background keeps updating wherever you are clearly not in the frame, so it follows lighting changes even while you are invisible. Pass `--static-background` to keep the original snapshot instead.
+
 To troubleshoot gesture recognition without adding text to the video, pass `--gesture-debug`. Diagnostic information appears only in the terminal.
 
 ## Visual assets

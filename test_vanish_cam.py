@@ -6,7 +6,7 @@ import mediapipe as mp
 
 from vanish_cam import (
     AppState, MultiViewGestureRecognizer, recognize_gesture, start_vanish_on_gesture,
-    victory_landmark_score,
+    update_background, victory_landmark_score,
 )
 
 
@@ -146,6 +146,31 @@ class ImmediateAnimationTests(unittest.TestCase):
             state = AppState(phase=phase)
             self.assertFalse(start_vanish_on_gesture(state, "Victory", 0.9, 12.5))
             self.assertEqual(state.phase, phase)
+
+
+class BackgroundUpdateTests(unittest.TestCase):
+    def setUp(self):
+        self.background = np.full((180, 320, 3), 100, dtype=np.uint8)
+        self.frame = np.full((180, 320, 3), 200, dtype=np.uint8)
+        self.mask = np.zeros((180, 320), dtype=np.float32)
+        self.mask[40:180, 140:180] = 1.0
+
+    def test_far_from_person_background_moves_toward_frame(self):
+        updated = update_background(self.background, self.frame, self.mask, rate=0.5)
+        self.assertEqual(updated[5, 5].tolist(), [150, 150, 150])
+
+    def test_person_and_safety_margin_never_leak_into_background(self):
+        updated = update_background(self.background, self.frame, self.mask, rate=0.5)
+        np.testing.assert_array_equal(updated[40:180, 140:180], self.background[40:180, 140:180])
+        margin = round(320 * 0.04)
+        np.testing.assert_array_equal(updated[100, 140 - margin:140], self.background[100, 140 - margin:140])
+
+    def test_repeated_updates_follow_a_lighting_change(self):
+        background = self.background
+        for _ in range(40):
+            background = update_background(background, self.frame, self.mask)
+        # In uint8 ogni passo arrotonda: l'ultimo scarto di pochi livelli e' invisibile.
+        self.assertGreaterEqual(int(background[5, 5, 0]), 195)
 
 
 class MultiViewTests(unittest.TestCase):

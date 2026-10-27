@@ -70,6 +70,10 @@ BACKGROUND_SAMPLE_SECONDS = 0.55
 VANISH_SECONDS = 3.6
 GESTURE_INTERVAL_SECONDS = 0.14
 GOKU_INTERVAL_SECONDS = 0.066
+# Regolarizzazione del guided filter (scala 0-255 della guida): piu' basso = bordi piu' fini.
+MASK_EDGE_EPS = 40.0
+BACKGROUND_UPDATE_SECONDS = 0.5
+BACKGROUND_UPDATE_RATE = 0.2
 
 
 @dataclass
@@ -116,6 +120,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--mode", choices=("normal", "naruto", "goku"),
         help="Salta il menu iniziale e avvia direttamente la modalità scelta",
+    )
+    parser.add_argument(
+        "--static-background", action="store_true",
+        help="Non aggiornare lo sfondo dopo la calibrazione (come nelle versioni precedenti)",
     )
     parser.add_argument(
         "--gesture-debug", action="store_true",
@@ -389,9 +397,42 @@ def person_mask(
     if not result.confidence_masks:
         return np.zeros((height, width), dtype=np.float32)
     raw = np.squeeze(result.confidence_masks[0].numpy_view()).astype(np.float32)
-    resized = cv2.resize(raw, (width, height), interpolation=cv2.INTER_LINEAR)
-    resized = cv2.GaussianBlur(resized, (0, 0), sigmaX=2.2, sigmaY=2.2)
+    if hasattr(cv2, "ximgproc"):
+        # Il guided filter fa aderire la maschera ai bordi reali (capelli, cuffie)
+        # ed elimina l'alone dello sfondo; a meta' risoluzione costa ~5 ms in 720p.
+        half = (max(1, width // 2), max(1, height // 2))
+        guide = cv2.resize(image.numpy_view(), half, interpolation=cv2.INTER_AREA)
+        small = cv2.resize(raw, half, interpolation=cv2.INTER_LINEAR)
+        small = cv2.ximgproc.guidedFilter(guide, small, 6, MASK_EDGE_EPS)
+        resized = cv2.resize(small, (width, height), interpolation=cv2.INTER_LINEAR)
+    else:
+        resized = cv2.resize(raw, (width, height), interpolation=cv2.INTER_LINEAR)
+        resized = cv2.GaussianBlur(resized, (0, 0), sigmaX=2.2, sigmaY=2.2)
     return np.clip((resized - 0.12) / 0.68, 0.0, 1.0)
+
+
+def update_background(
+    background: np.ndarray,
+    frame: np.ndarray,
+    mask: np.ndarray,
+    rate: float = BACKGROUND_UPDATE_RATE,
+) -> np.ndarray:
+    """Fondi il frame nello sfondo solo dove la persona e' sicuramente assente.
+
+    Segue i cambi di luce senza ricalibrare. Il margine attorno alla sagoma
+    evita che bordi incerti (mani, capelli) restino stampati nello sfondo.
+    """
+    height, width = mask.shape
+    small_size = (max(1, width // 4), max(1, height // 4))
+    occupied = (cv2.resize(mask, small_size, interpolation=cv2.INTER_AREA) > 0.05).astype(np.uint8)
+    # Margine di almeno il 4% della larghezza attorno alla sagoma.
+    grow = 2 * max(1, int(np.ceil(small_size[0] * 0.04))) + 1
+    occupied = cv2.dilate(occupied, np.ones((grow, grow), np.uint8))
+    hard_free = 1.0 - occupied.astype(np.float32)
+    # La sfumatura resta tutta fuori dal margine: dentro il peso e' zero.
+    free = cv2.GaussianBlur(hard_free, (0, 0), sigmaX=grow / 3.0) * hard_free
+    weight = cv2.resize(free, (width, height), interpolation=cv2.INTER_NEAREST) * rate
+    return cv2.blendLinear(frame, background, weight, 1.0 - weight)
 
 
 def alpha_composite(person: np.ndarray, background: np.ndarray, alpha: np.ndarray) -> np.ndarray:
@@ -863,6 +904,7 @@ def run_camera(args: argparse.Namespace, resources: ExitStack, mode: str) -> int
     virtual_camera_initialized = False
     calibration_remaining = None
     last_gesture_report = 0.0
+    last_background_update = float("-inf")
     started = time.perf_counter()
     print("[Webcam] Esci dall'inquadratura per 4 secondi: acquisisco lo sfondo.")
     if mode == "goku":
@@ -1062,6 +1104,23 @@ def run_camera(args: argparse.Namespace, resources: ExitStack, mode: str) -> int
                     )
                     if state.phase == "vanished":
                         vanished_frame = display
+
+            # Lo sfondo segue luce e piccoli spostamenti, anche da invisibili.
+            if (
+                not args.static_background
+                and background is not None
+                and state.phase in ("ready", "vanished")
+                and now - last_background_update >= BACKGROUND_UPDATE_SECONDS
+                and last_mask_at != now  # Un solo segment_for_video per timestamp.
+            ):
+                last_background_update = now
+                rgb = cv2.cvtColor(camera_frame, cv2.COLOR_BGR2RGB)
+                scene_mask = person_mask(
+                    segmenter, mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb),
+                    elapsed_ms, width, height,
+                )
+                background = update_background(background, camera_frame, scene_mask)
+                vanished_frame = None
 
             if virtual_camera is not None:
                 send_virtual_frame(virtual_camera, display)
