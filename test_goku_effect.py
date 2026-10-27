@@ -6,8 +6,8 @@ from unittest.mock import Mock
 
 import numpy as np
 
-from local_app import vanish_cam as app
-from local_app.goku_effect import (
+import vanish_cam as app
+from goku_effect import (
     CHEEK_LEFT, CHEEK_RIGHT, FOREHEAD_TOP, NOSE_BRIDGE, HoldTracker, face_reference,
     forehead_fingers_pose, make_speed_lines, render_teleport, sound_path, teleport_region,
 )

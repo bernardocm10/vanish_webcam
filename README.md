@@ -82,3 +82,11 @@ To troubleshoot gesture recognition without adding text to the video, pass `--ge
 The [wooden log](assets/substitution_log.png) is an original illustration generated with ImageGen using the supplied image as a visual reference. Smoke is drawn in real time by `naruto_effect.py` so it follows the person's position and scales with the video. We also considered a [CC0 smoke sprite sheet](https://opengameart.org/content/smoke-sprite-sheet), but the procedural animation adapts better to dynamic positioning without an additional asset. No anime frames or assets are included in the project.
 
 Goku mode (`goku_effect.py`) uses `face_landmarker.task` to locate the forehead and `hand_landmarker.task` to track the fingers, in a background thread so the video never waits for the models. The teleport's speed lines are drawn in code, without anime frames.
+
+## Development
+
+Run the tests from the project folder:
+
+```bash
+.venv/bin/python -m unittest
+```
