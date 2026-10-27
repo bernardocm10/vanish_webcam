@@ -14,7 +14,9 @@ import cv2
 import numpy as np
 
 try:
-    from .ash_effect import EFFECT_SECONDS as ASH_EFFECT_SECONDS, make_ash, render_ash, render_remains
+    from .ash_effect import (
+        EFFECT_SECONDS as ASH_EFFECT_SECONDS, HANDS_UP_HOLD_SECONDS, make_ash, render_ash, render_remains,
+    )
     from .goku_effect import (
         EFFECT_SECONDS as GOKU_EFFECT_SECONDS, HoldTracker, make_speed_lines,
         render_teleport, teleport_region,
@@ -31,7 +33,9 @@ try:
     )
     from .i18n import t
 except ImportError:
-    from ash_effect import EFFECT_SECONDS as ASH_EFFECT_SECONDS, make_ash, render_ash, render_remains
+    from ash_effect import (
+        EFFECT_SECONDS as ASH_EFFECT_SECONDS, HANDS_UP_HOLD_SECONDS, make_ash, render_ash, render_remains,
+    )
     from goku_effect import (
         EFFECT_SECONDS as GOKU_EFFECT_SECONDS, HoldTracker, make_speed_lines,
         render_teleport, teleport_region,
@@ -208,12 +212,14 @@ class ParticlesMode(Mode):
 
 
 class AshMode(ParticlesMode):
-    """Same salute as Particles: the silhouette turns to ash, crumbles, and the pile stays until R."""
+    """Hands up: the silhouette turns to ash, crumbles, and the pile stays until R."""
 
     name = "ash"
 
     def __init__(self, segment: Segment, sound=None):
         super().__init__(segment, sound)
+        # After R the hands must come down before vanishing again (inherited on_detection).
+        self.hold = HoldTracker(hold_seconds=HANDS_UP_HOLD_SECONDS)
         self.vanished_frame: np.ndarray | None = None
 
     def vanish(self, now: float) -> None:

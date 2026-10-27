@@ -1,4 +1,4 @@
-"""Ash: the silhouette turns to grey ash, crumbles from the head down and leaves a pile on the floor."""
+"""Ash: hands up, the silhouette turns to grey ash, crumbles from the head down and leaves a pile on the floor."""
 
 from __future__ import annotations
 
@@ -6,6 +6,11 @@ from dataclasses import dataclass
 
 import cv2
 import numpy as np
+
+try:
+    from .goku_effect import face_reference
+except ImportError:
+    from goku_effect import face_reference
 
 # The ash spreads from the head down within ASH_SECONDS; the body then crumbles, also from
 # the head down, between CRUMBLE_START and CRUMBLE_START + CRUMBLE_SECONDS. Grains fall
@@ -15,6 +20,61 @@ CRUMBLE_START = 1.0
 CRUMBLE_SECONDS = 1.2
 EFFECT_SECONDS = 3.8
 DUST_PUFFS = 90
+# Both hands up must be held for a moment: raising them to stretch passes through the pose.
+HANDS_UP_HOLD_SECONDS = 0.4
+# Face Mesh: the chin; hands up means both palms above it.
+CHIN = 152
+
+
+def hands_up_reference(face_landmarks, width: int, height: int) -> tuple[float, float, float] | None:
+    """The face's horizontal center, the chin height and the face width, in pixels."""
+    base = face_reference(face_landmarks, width, height)
+    if base is None or len(face_landmarks) <= CHIN:
+        return None
+    top, bridge, face_width = base
+    chin_y = face_landmarks[CHIN].y * height
+    if not np.isfinite(chin_y):
+        return None
+    return float(bridge[0]), float(chin_y), face_width
+
+
+def extended_fingers(points: np.ndarray) -> int:
+    """Index to little finger whose tip is clearly farther from the wrist than its middle joint."""
+    wrist = points[0]
+    return sum(
+        np.linalg.norm(points[tip] - wrist) >= 1.15 * np.linalg.norm(points[pip] - wrist)
+        for tip, pip in ((8, 6), (12, 10), (16, 14), (20, 18))
+    )
+
+
+def hands_up_pose(hands, face, width: int, height: int) -> bool:
+    """Both hands raised beside the head like a startled scream: open, fingers up, palms above the chin.
+
+    One hand on each side of the face, so a single raised hand or a wave does not count.
+    """
+    if face is None or len(hands) < 2:
+        return False
+    center_x, chin_y, face_width = face
+    sides = set()
+    for hand in hands[:2]:
+        if len(hand) != 21:
+            return False
+        points = np.array([(p.x * width, p.y * height) for p in hand], dtype=np.float32)
+        if not np.isfinite(points).all():
+            return False
+        palm = points[[0, 5, 9, 13, 17]].mean(axis=0)
+        fingertips = points[[8, 12, 16, 20]].mean(axis=0)
+        upright = points[0][1] - fingertips[1] > 0.3 * face_width
+        offset = palm[0] - center_x
+        if (
+            extended_fingers(points) < 3
+            or not upright
+            or palm[1] > chin_y
+            or not 0.45 * face_width < abs(offset) < 4.0 * face_width
+        ):
+            return False
+        sides.add(offset > 0)
+    return len(sides) == 2
 
 
 @dataclass

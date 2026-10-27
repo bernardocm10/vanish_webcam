@@ -43,7 +43,7 @@ Using it in a call? See [Calls, Teams and OBS](docs/calls.md).
 | **Naruto** | Palms pressed together, held for a moment | A cloud of smoke, and a log takes your place |
 | **Goku** | Two fingers on your forehead for 1 s | Speed lines and you teleport; repeat to come back |
 | **Particles** | Salute: flat hand on your brow, held for a moment | You break into fragments carried by the wind |
-| **Ash** | The same salute | You turn to grey ash, crumble from the head down, and a pile of ash stays on the floor |
+| **Ash** | Both open hands raised beside your head, held for a moment | You turn to grey ash, crumble from the head down, and a pile of ash stays on the floor |
 
 Details for each one in [Effects](docs/effects.md).
 

@@ -42,7 +42,9 @@ Your silhouette breaks into small colored fragments that drift sideways as if ca
 
 ## 5 · Ash
 
-**Gesture:** the same salute as Particles.
+**Gesture:** hands up. Raise both hands beside your head, open with the fingers pointing up, above your chin, one on each side of your face, and hold for a moment (under half a second).
+
+One raised hand, fists, or hands in front of your face do not count. After pressing `R`, lower your hands before raising them again.
 
 You freeze into a statue of grey ash, the ash spreading from your head down while keeping the shapes of your face. Then the statue crumbles, also from the head down: the grains fall to the floor, a cloud of dust rises, and a pile of ash grows where you stood. The pile stays until you press `R`. The whole effect lasts about 3.8 seconds; like Particles, your silhouette is captured once when it starts.
 

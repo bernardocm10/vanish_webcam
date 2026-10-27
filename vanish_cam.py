@@ -30,6 +30,7 @@ try:
         SOUND_NAME as GOKU_SOUND_NAME, face_reference, forehead_fingers_pose, sound_path,
     )
     from .particles_effect import salute_pose, salute_reference
+    from .ash_effect import hands_up_pose, hands_up_reference
     from .modes import MODES, FrameInfo, Mode
     from .call_audio import MIC_DESCRIPTION, CallSound, VirtualMic
     from .control_panel import ACCENTS, AMBER, FONT_DIR, FONTS, GREEN, MODE_CARDS, ControlPanel, PanelView
@@ -42,6 +43,7 @@ except ImportError:
         SOUND_NAME as GOKU_SOUND_NAME, face_reference, forehead_fingers_pose, sound_path,
     )
     from particles_effect import salute_pose, salute_reference
+    from ash_effect import hands_up_pose, hands_up_reference
     from modes import MODES, FrameInfo, Mode
     from call_audio import MIC_DESCRIPTION, CallSound, VirtualMic
     from control_panel import ACCENTS, AMBER, FONT_DIR, FONTS, GREEN, MODE_CARDS, ControlPanel, PanelView
@@ -259,7 +261,7 @@ def create_recognizer(
         except Exception:
             face.close()
             raise
-        detector = SalutePoseDetector if mode in ("particles", "ash") else GokuPoseDetector
+        detector = {"particles": SalutePoseDetector, "ash": HandsUpPoseDetector}.get(mode, GokuPoseDetector)
         return detector(face, hands)
     if mode == "naruto":
         if not HAND_MODEL.is_file():
@@ -639,16 +641,25 @@ class GokuPoseDetector:
             self.last_face = None
         result = self.hands.detect_for_video(image, timestamp_ms)
         self.last_hand_count = len(result.hand_landmarks)
-        return any(
-            self.pose(hand, self.last_face, image.width, image.height)
-            for hand in result.hand_landmarks
-        )
+        return self.matches(result.hand_landmarks, self.last_face, image.width, image.height)
+
+    def matches(self, hands, face, width: int, height: int) -> bool:
+        return any(self.pose(hand, face, width, height) for hand in hands)
 
     def close(self) -> None:
         try:
             self.face.close()
         finally:
             self.hands.close()
+
+
+class HandsUpPoseDetector(GokuPoseDetector):
+    """Both hands raised beside the head: a pose of the two hands together, not of either one."""
+
+    reference = staticmethod(hands_up_reference)
+
+    def matches(self, hands, face, width: int, height: int) -> bool:
+        return hands_up_pose(hands, face, width, height)
 
 
 class SalutePoseDetector(GokuPoseDetector):

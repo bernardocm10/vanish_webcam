@@ -1,11 +1,16 @@
 import unittest
+from types import SimpleNamespace
 from unittest.mock import Mock
 
 import numpy as np
 
 import vanish_cam as app
-from ash_effect import ASH_SECONDS, CRUMBLE_START, EFFECT_SECONDS, make_ash, render_ash, render_remains
+from ash_effect import (
+    ASH_SECONDS, CHIN, CRUMBLE_START, EFFECT_SECONDS, hands_up_pose, hands_up_reference,
+    make_ash, render_ash, render_remains,
+)
 from control_panel import MODE_CARDS
+from goku_effect import CHEEK_LEFT, CHEEK_RIGHT, FOREHEAD_TOP, NOSE_BRIDGE
 from modes import MODES, AshMode, FrameInfo
 
 HEIGHT, WIDTH = 180, 320
@@ -65,15 +70,79 @@ class AshEffectTests(unittest.TestCase):
         np.testing.assert_array_equal(render_ash(self.background, cloud, 2.0), self.background)
 
 
+def face_landmarks():
+    points = [SimpleNamespace(x=0.5, y=0.4) for _ in range(478)]
+    points[FOREHEAD_TOP] = SimpleNamespace(x=0.5, y=0.22)
+    points[NOSE_BRIDGE] = SimpleNamespace(x=0.5, y=0.36)
+    points[CHEEK_LEFT] = SimpleNamespace(x=0.38, y=0.45)
+    points[CHEEK_RIGHT] = SimpleNamespace(x=0.62, y=0.45)
+    points[CHIN] = SimpleNamespace(x=0.5, y=0.55)
+    return points
+
+
+def hand(x, y, up=True, open_hand=True):
+    """A hand with its knuckles at (x, y): fingers spread and pointing up (or down), or folded into a fist."""
+    sign = -1 if up else 1
+    points = [SimpleNamespace(x=x, y=y) for _ in range(21)]
+    points[0] = SimpleNamespace(x=x, y=y - sign * 0.12)
+    for number, base in enumerate((5, 9, 13, 17)):
+        spread = (number - 1.5) * 0.025
+        reach = (0.03, 0.05, 0.07) if open_hand else (0.03, 0.01, -0.02)
+        points[base] = SimpleNamespace(x=x + spread, y=y)
+        for joint, step in zip((base + 1, base + 2, base + 3), reach):
+            points[joint] = SimpleNamespace(x=x + spread * (1 + step * 8), y=y + sign * step)
+    return points
+
+
+class HandsUpPoseTests(unittest.TestCase):
+    def setUp(self):
+        self.face = hands_up_reference(face_landmarks(), 640, 480)
+
+    def pose(self, hands, face="default"):
+        return hands_up_pose(hands, self.face if face == "default" else face, 640, 480)
+
+    def test_both_open_hands_raised_beside_the_head(self):
+        self.assertTrue(self.pose([hand(0.25, 0.3), hand(0.75, 0.3)]))
+        self.assertTrue(self.pose([hand(0.3, 0.45), hand(0.72, 0.2)]))  # Not at the same height.
+
+    def test_one_hand_or_no_face_is_not_enough(self):
+        self.assertFalse(self.pose([hand(0.25, 0.3)]))
+        self.assertFalse(self.pose([hand(0.25, 0.3), hand(0.75, 0.3)], face=None))
+
+    def test_hands_below_the_chin_are_not_up(self):
+        self.assertFalse(self.pose([hand(0.25, 0.65), hand(0.75, 0.65)]))
+
+    def test_both_hands_on_the_same_side_are_not_the_pose(self):
+        self.assertFalse(self.pose([hand(0.2, 0.3), hand(0.3, 0.3)]))
+
+    def test_hands_in_front_of_the_face_are_not_the_pose(self):
+        self.assertFalse(self.pose([hand(0.47, 0.3), hand(0.53, 0.3)]))
+
+    def test_fists_or_hands_pointing_down_do_not_count(self):
+        self.assertFalse(self.pose([hand(0.25, 0.3, open_hand=False), hand(0.75, 0.3, open_hand=False)]))
+        self.assertFalse(self.pose([hand(0.25, 0.3, up=False), hand(0.75, 0.3, up=False)]))
+
+    def test_detector_checks_both_hands_together(self):
+        face = Mock()
+        face.detect_for_video.return_value = SimpleNamespace(face_landmarks=[face_landmarks()])
+        hands = Mock()
+        hands.detect_for_video.return_value = SimpleNamespace(hand_landmarks=[hand(0.25, 0.3), hand(0.75, 0.3)])
+        detector = app.HandsUpPoseDetector(face, hands)
+        image = SimpleNamespace(width=640, height=480)
+        self.assertTrue(detector.recognize_pose(image, 0))
+        hands.detect_for_video.return_value = SimpleNamespace(hand_landmarks=[hand(0.25, 0.3)])
+        self.assertFalse(detector.recognize_pose(image, 100))
+
+
 class AshModeTests(unittest.TestCase):
-    def test_registered_with_a_panel_row_and_the_salute_detector(self):
+    def test_registered_with_a_panel_row_and_a_pose_detector(self):
         self.assertIs(MODES["ash"], AshMode)
         self.assertEqual(MODE_CARDS[-1].key, "ash")
         self.assertEqual(app.KEY_ACTIONS[ord("5")], ("mode", "ash"))
         recognizer = Mock()
         self.assertEqual(app.detection_function("ash", recognizer), recognizer.recognize_pose)
 
-    def test_salute_turns_to_ash_and_the_pile_stays_until_r(self):
+    def test_hands_up_turns_to_ash_and_the_pile_stays_until_r(self):
         frame, mask, background = person()
         segment = Mock(return_value=mask)
         mode = AshMode(segment)
