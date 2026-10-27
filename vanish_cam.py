@@ -31,7 +31,7 @@ try:
     )
     from .modes import MODES, FrameInfo, Mode
     from .call_audio import MIC_DESCRIPTION, CallSound, VirtualMic
-    from .control_panel import ACCENTS, AMBER, GREEN, MODE_CARDS, ControlPanel, PanelView
+    from .control_panel import ACCENTS, AMBER, FONT_DIR, FONTS, GREEN, MODE_CARDS, ControlPanel, PanelView
     from .user_data import Settings, UserData
 except ImportError:
     from naruto_effect import joined_hands_from_landmarks, load_log
@@ -41,7 +41,7 @@ except ImportError:
     )
     from modes import MODES, FrameInfo, Mode
     from call_audio import MIC_DESCRIPTION, CallSound, VirtualMic
-    from control_panel import ACCENTS, AMBER, GREEN, MODE_CARDS, ControlPanel, PanelView
+    from control_panel import ACCENTS, AMBER, FONT_DIR, FONTS, GREEN, MODE_CARDS, ControlPanel, PanelView
     from user_data import Settings, UserData
 
 
@@ -787,7 +787,8 @@ def set_fullscreen(enabled: bool) -> None:
 
 def self_test() -> int:
     """Check bundled resources and model initialization without opening a webcam."""
-    required = (SEGMENTER_MODEL, GESTURE_MODEL, HAND_MODEL, FACE_MODEL, SOUND_PATH)
+    fonts = tuple(FONT_DIR / names[0] for names in FONTS.values())
+    required = (SEGMENTER_MODEL, GESTURE_MODEL, HAND_MODEL, FACE_MODEL, SOUND_PATH, *fonts)
     missing = [path.name for path in required if not path.is_file()]
     if missing:
         raise RuntimeError(f"Arquivos faltando: {', '.join(missing)}")

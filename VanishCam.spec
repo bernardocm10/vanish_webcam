@@ -8,6 +8,7 @@ root = Path(SPECPATH).resolve()
 icon_file = root / "assets" / "vanish_icon.ico"
 resources = [
     (root / "hand_landmarker.task", "."),
+    (root / "face_landmarker.task", "."),
     (root / "models" / "gesture_recognizer.task", "models"),
     (root / "models" / "selfie_segmenter_landscape.tflite", "models"),
     (root / "assets" / "substitution_log.png", "assets"),
