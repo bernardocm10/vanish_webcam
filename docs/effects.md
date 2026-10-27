@@ -12,7 +12,9 @@ You dissolve into the background. The effect starts as soon as the gesture is re
 
 ## 2 · Naruto
 
-**Gesture:** bring your palms together in front of the webcam, fingers side by side (not interlaced). Keep both hands visible.
+**Gesture:** press your palms together in front of the webcam, fingers pointing up and side by side (not interlaced), and hold for a moment (a quarter of a second). Keep both hands visible.
+
+Open hands that are only close to each other do not count: the palms, wrists, and fingertips must touch. After pressing `R`, separate your hands before doing the gesture again.
 
 You vanish in a cloud of smoke and a wooden log appears, falls, and stays in your place until you press `R`. After that you can do it again.
 

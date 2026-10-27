@@ -19,7 +19,8 @@ try:
         render_teleport, teleport_region,
     )
     from .naruto_effect import (
-        EFFECT_SECONDS as NARUTO_EFFECT_SECONDS, landed_log_anchor, load_log,
+        EFFECT_SECONDS as NARUTO_EFFECT_SECONDS, HOLD_SECONDS as NARUTO_HOLD_SECONDS,
+        landed_log_anchor, load_log,
         overlay_log, render_substitution, substitution_anchor,
     )
     from .normal_effect import VANISH_SECONDS, apply_dissolve, make_dissolve_fields
@@ -32,7 +33,8 @@ except ImportError:
         render_teleport, teleport_region,
     )
     from naruto_effect import (
-        EFFECT_SECONDS as NARUTO_EFFECT_SECONDS, landed_log_anchor, load_log,
+        EFFECT_SECONDS as NARUTO_EFFECT_SECONDS, HOLD_SECONDS as NARUTO_HOLD_SECONDS,
+        landed_log_anchor, load_log,
         overlay_log, render_substitution, substitution_anchor,
     )
     from normal_effect import VANISH_SECONDS, apply_dissolve, make_dissolve_fields
@@ -179,7 +181,7 @@ class ParticlesMode(VSignMode):
 class NarutoMode(Mode):
     name = "naruto"
     detect_interval = 0.08
-    instructions = "Junte as palmas na frente da webcam: fumaça e tronco."
+    instructions = "Junte as palmas (pulsos encostados) e segure um instante: fumaça e tronco."
 
     def __init__(self, segment: Segment, sound=None):
         super().__init__(segment, sound)
@@ -188,9 +190,11 @@ class NarutoMode(Mode):
         self.mask: np.ndarray | None = None
         self.anchor: tuple[int, int, int] | None = None
         self.vanished_frame: np.ndarray | None = None
+        self.hold = HoldTracker(hold_seconds=NARUTO_HOLD_SECONDS, grace_seconds=0.2)
 
     def on_detection(self, joined, now: float) -> None:
-        if self.phase == "ready" and joined:
+        # Dopo R bisogna separare le mani prima di poter sparire di nuovo.
+        if self.hold.update(bool(joined), now) and self.phase == "ready":
             self.vanish(now)
 
     def vanish(self, now: float) -> None:

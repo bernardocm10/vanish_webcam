@@ -43,7 +43,7 @@ To keep the original snapshot and never update it, use `--static-background`.
 ### The gesture is not recognized
 
 - Keep your hand fully visible and well lit, facing the camera.
-- For Naruto, keep **both** hands in the frame with fingers side by side, not interlaced.
+- For Naruto, keep **both** hands in the frame, press the palms together (wrists touching too), fingers side by side and pointing up, and hold for a moment.
 - For Goku, hold the pose for a full second: breaking it restarts the countdown.
 - Run with `--gesture-debug` to see in the terminal what the app detects. Nothing is drawn on the video.
 

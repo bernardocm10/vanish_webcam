@@ -15,17 +15,39 @@ from test_video_output import InlineRecognizer, app_mocks, arguments, video_cloc
 
 
 class JoinedHandsTests(unittest.TestCase):
-    def test_joined_hands_start_effect_immediately(self):
+    def test_joined_hands_must_be_held_briefly(self):
         sound = Mock()
         mode = NarutoMode(segment=lambda frame, timestamp: None, sound=sound)
         mode.on_detection(False, 1.0)
-        self.assertEqual(mode.phase, "ready")
         mode.on_detection(True, 1.1)
-        self.assertEqual(mode.phase, "vanishing")
-        self.assertEqual(mode.started, 1.1)
         mode.on_detection(True, 1.2)
-        self.assertEqual(mode.started, 1.1)
+        self.assertEqual(mode.phase, "ready")  # Mani appena giunte: ancora niente.
+        mode.on_detection(True, 1.35)
+        self.assertEqual(mode.phase, "vanishing")
+        self.assertEqual(mode.started, 1.35)
+        mode.on_detection(True, 1.5)
+        self.assertEqual(mode.started, 1.35)
         sound.play.assert_called_once()
+
+    def test_hands_passing_through_the_pose_do_not_trigger(self):
+        mode = NarutoMode(segment=lambda frame, timestamp: None, sound=Mock())
+        for now, joined in ((1.0, True), (1.08, True), (1.16, False), (1.24, True), (1.32, False), (1.6, False)):
+            mode.on_detection(joined, now)
+        self.assertEqual(mode.phase, "ready")
+
+    def test_hands_must_separate_before_vanishing_again(self):
+        mode = NarutoMode(segment=lambda frame, timestamp: None, sound=Mock())
+        mode.on_detection(True, 1.0)
+        mode.on_detection(True, 1.3)
+        mode.reappear()
+        mode.on_detection(True, 1.4)
+        mode.on_detection(True, 2.0)
+        self.assertEqual(mode.phase, "ready")
+        mode.on_detection(False, 2.1)
+        mode.on_detection(False, 2.5)
+        mode.on_detection(True, 2.6)
+        mode.on_detection(True, 2.9)
+        self.assertEqual(mode.phase, "vanishing")
 
     @staticmethod
     def hand(center_x, upward=True):
@@ -37,15 +59,46 @@ class JoinedHandsTests(unittest.TestCase):
             points[index] = SimpleNamespace(x=center_x + offset, y=0.34 if upward else 1.04)
         return points
 
-    def test_two_nearby_hands_recognized_but_one_or_separated_hands_are_not(self):
-        left, right = self.hand(0.45), self.hand(0.55)
+    @staticmethod
+    def tilted(hand, degrees, pivot=None):
+        """Rotate a hand in the image around its wrist (in pixels, so the angle is real)."""
+        angle = np.radians(degrees)
+        c, s = np.cos(angle), np.sin(angle)
+        px, py = (hand[0].x * 640, hand[0].y * 480) if pivot is None else pivot
+        out = []
+        for p in hand:
+            x, y = p.x * 640 - px, p.y * 480 - py
+            out.append(SimpleNamespace(x=(px + c * x - s * y) / 640, y=(py + s * x + c * y) / 480))
+        return out
+
+    def test_touching_palms_recognized_but_one_or_separated_hands_are_not(self):
+        left, right = self.hand(0.47), self.hand(0.53)
         self.assertTrue(joined_hands_from_landmarks([left, right], 640, 480))
         self.assertFalse(joined_hands_from_landmarks([left], 640, 480))
         self.assertFalse(joined_hands_from_landmarks([left, self.hand(0.83)], 640, 480))
-        self.assertFalse(joined_hands_from_landmarks([left, self.hand(0.55, upward=False)], 640, 480))
+        self.assertFalse(joined_hands_from_landmarks([left, self.hand(0.53, upward=False)], 640, 480))
+
+    def test_open_palms_side_by_side_before_the_gesture_are_not_joined(self):
+        # Era il falso positivo: mani aperte vicine, ma non ancora unite.
+        self.assertFalse(joined_hands_from_landmarks([self.hand(0.45), self.hand(0.55)], 640, 480))
+
+    def test_slight_tilt_is_tolerated_but_open_or_crossed_hands_are_not(self):
+        left, right = self.hand(0.47), self.hand(0.53)
+        # Punte verso l'interno di 15 gradi: palme ancora giunte.
+        self.assertTrue(joined_hands_from_landmarks([self.tilted(left, 15), self.tilted(right, -15)], 640, 480))
+        # Mani aperte a V, subito prima di chiuderle.
+        self.assertFalse(joined_hands_from_landmarks([self.tilted(left, -15), self.tilted(right, 15)], 640, 480))
+        # Dita incrociate: non e' il sigillo.
+        self.assertFalse(joined_hands_from_landmarks([self.tilted(left, 30), self.tilted(right, -30)], 640, 480))
+
+    def test_wrists_apart_are_not_joined(self):
+        # Punte vicine ma polsi lontani: una "V" con le braccia, non le palme giunte.
+        left = self.tilted(self.hand(0.47), 20, pivot=(0.47 * 640, 0.34 * 480))
+        right = self.tilted(self.hand(0.53), -20, pivot=(0.53 * 640, 0.34 * 480))
+        self.assertFalse(joined_hands_from_landmarks([left, right], 640, 480))
 
     def test_rotated_joined_hands_still_recognized(self):
-        hands = [self.hand(0.45), self.hand(0.55)]
+        hands = [self.hand(0.47), self.hand(0.53)]
         rotated = [[SimpleNamespace(x=point.y, y=1 - point.x) for point in hand]
                    for hand in hands]
         self.assertTrue(joined_hands_from_landmarks(rotated, 480, 640))
@@ -53,7 +106,7 @@ class JoinedHandsTests(unittest.TestCase):
     def test_recognizer_uses_two_hands_in_the_current_frame(self):
         primary, alternate = Mock(), Mock()
         primary.detect_for_video.return_value = SimpleNamespace(
-            hand_landmarks=[self.hand(0.45), self.hand(0.55)])
+            hand_landmarks=[self.hand(0.47), self.hand(0.53)])
         recognizer = app.MultiViewHandLandmarker(primary, alternate)
         image = app.mp.Image(image_format=app.mp.ImageFormat.SRGB,
                              data=np.zeros((480, 640, 3), np.uint8))
@@ -64,10 +117,10 @@ class JoinedHandsTests(unittest.TestCase):
     def test_hand_model_recovers_joined_hands_in_a_cropped_view(self):
         primary, alternate = Mock(), Mock()
         primary.detect_for_video.return_value = SimpleNamespace(
-            hand_landmarks=[self.hand(0.45)])
+            hand_landmarks=[self.hand(0.47)])
         alternate.detect.side_effect = [
             SimpleNamespace(hand_landmarks=[]),
-            SimpleNamespace(hand_landmarks=[self.hand(0.45), self.hand(0.55)]),
+            SimpleNamespace(hand_landmarks=[self.hand(0.47), self.hand(0.53)]),
         ]
         recognizer = app.MultiViewHandLandmarker(primary, alternate)
         image = app.mp.Image(image_format=app.mp.ImageFormat.SRGB,
@@ -125,9 +178,10 @@ class EffectTests(unittest.TestCase):
 
 class NarutoVideoLoopTests(unittest.TestCase):
     def test_effect_is_sent_to_preview_and_virtual_camera(self):
-        frames = [np.full((80, 120, 3), v, np.uint8) for v in (10, 40, 80, 120, 160)]
+        frames = [np.full((80, 120, 3), v, np.uint8) for v in (10, 40, 80, 120, 160, 200)]
         capture = Mock()
-        read, clock = video_clock(frames, (0, 4.1, 4.3, 4.5, 6.0))
+        # Mani giunte da 4.3: l'effetto parte solo dopo la tenuta, a 4.6.
+        read, clock = video_clock(frames, (0, 4.1, 4.3, 4.6, 4.8, 6.3))
         capture.read.side_effect = read
         segmenter, recognizer = Mock(), Mock()
         recognizer.recognize_joined_hands.return_value = True
@@ -148,17 +202,18 @@ class NarutoVideoLoopTests(unittest.TestCase):
             mocks.enter_context(patch.object(app.cv2, "resizeWindow"))
             mocks.enter_context(patch.object(app.cv2, "destroyAllWindows"))
             mocks.enter_context(patch.object(app.cv2, "imshow", side_effect=lambda name, frame: preview.append(frame.copy())))
-            mocks.enter_context(patch.object(app.cv2, "waitKey", side_effect=(0, 0, 0, 0, ord("q"))))
+            mocks.enter_context(patch.object(app.cv2, "waitKey", side_effect=(0, 0, 0, 0, 0, ord("q"))))
             mocks.enter_context(patch.object(app.cv2, "putText", side_effect=AssertionError("Overlay vietato")))
             mocks.enter_context(patch("builtins.print"))
             self.assertEqual(app.run(), 0)
-        self.assertEqual(len(preview), 5)
+        self.assertEqual(len(preview), 6)
         for sent, shown in zip(virtual.send.call_args_list, preview):
             np.testing.assert_array_equal(sent.args[0], shown)
-        self.assertTrue(np.any(preview[2] != frames[2]))
+        np.testing.assert_array_equal(preview[2], frames[2])  # Ancora in tenuta.
         self.assertTrue(np.any(preview[3] != frames[3]))
-        self.assertTrue(np.any(preview[4] != frames[1]))  # Tronco persistente.
-        recognizer.recognize_joined_hands.assert_called_once()
+        self.assertTrue(np.any(preview[4] != frames[4]))
+        self.assertTrue(np.any(preview[5] != frames[1]))  # Tronco persistente.
+        self.assertEqual(recognizer.recognize_joined_hands.call_count, 2)  # Inizio e conferma della tenuta.
         sound.play.assert_called_once()
         sound.close.assert_called_once()
 

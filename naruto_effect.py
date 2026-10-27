@@ -10,11 +10,16 @@ import numpy as np
 
 
 EFFECT_SECONDS = 1.45
+# Le mani devono restare giunte per un attimo: avvicinandole si passa per pose simili.
+HOLD_SECONDS = 0.25
 LOG_PATH = Path(__file__).resolve().parent / "assets" / "substitution_log.png"
 
 
 def joined_hands_from_landmarks(hands, width: int, height: int) -> bool:
-    """Recognize two nearby, similarly oriented open hands in image space."""
+    """Recognize two palms pressed together: wrists, palms and fingertips touching, fingers parallel.
+
+    Distances are in hand sizes (wrist to middle knuckle), so they work at any distance from the camera.
+    """
     if len(hands) < 2:
         return False
     points = [np.array([(p.x * width, p.y * height) for p in hand])
@@ -31,10 +36,12 @@ def joined_hands_from_landmarks(hands, width: int, height: int) -> bool:
     alignment = float(np.dot(*directions) /
                       max(1e-6, np.linalg.norm(directions[0]) * np.linalg.norm(directions[1])))
     fingertips = [hand[[8, 12, 16, 20]].mean(axis=0) for hand in points]
+    # Due mani aperte affiancate (prima del gesto) restano a quasi una mano di distanza: non bastano.
     return (
-        alignment > 0.25
-        and np.linalg.norm(palms[0] - palms[1]) < size * 1.55
-        and np.linalg.norm(fingertips[0] - fingertips[1]) < size * 1.9
+        alignment > 0.7
+        and np.linalg.norm(palms[0] - palms[1]) < size * 0.75
+        and np.linalg.norm(points[0][0] - points[1][0]) < size * 0.9
+        and np.linalg.norm(fingertips[0] - fingertips[1]) < size * 0.75
     )
 
 
