@@ -30,7 +30,7 @@ from .sound import SOUND_PATH, VanishSound
 from .user_data import Settings, UserData
 from .virtual_camera import open_virtual_camera, send_virtual_frame
 
-WINDOW_NAME = "Webcam - Anteprima"
+WINDOW_NAME = "VanishCam - Video"
 
 CALIBRATION_SECONDS = 4.0
 BACKGROUND_SAMPLE_SECONDS = 0.55

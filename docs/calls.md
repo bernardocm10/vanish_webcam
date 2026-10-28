@@ -64,7 +64,7 @@ If [OBS Studio](https://obsproject.com/) is installed, the app automatically tri
 ### Inside an OBS scene
 
 1. Run `scripts\windows\start-obs.bat`.
-2. In OBS, add a **Window Capture** source and select the **Webcam - Anteprima** window.
+2. In OBS, add a **Window Capture** source and select the **VanishCam - Video** window.
 3. Start the virtual camera from OBS.
 
 OBS has only one virtual camera, so do not use it as both an OBS input and output at the same time.
