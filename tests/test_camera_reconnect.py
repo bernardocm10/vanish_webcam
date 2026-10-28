@@ -1,13 +1,21 @@
+import queue
 import threading
+import time
 import unittest
 from contextlib import ExitStack
+from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 import numpy as np
 
 from vanishcam import app
+from vanishcam import camera as camera_module
 from vanishcam import detectors, segmentation
-from vanishcam.camera import CameraFeed, dim_for_card, reconnecting_card
+from vanishcam.app import choose_camera
+from vanishcam.camera import (
+    CameraFeed, CameraInfo, FrameReader, device_instance_id, dim_for_card, list_cameras, reconnecting_card,
+    restart_driver,
+)
 from vanishcam.i18n import t
 from .test_video_output import InlineRecognizer, app_mocks, arguments
 
@@ -86,6 +94,214 @@ class CameraFeedTests(unittest.TestCase):
         self.assertFalse(reopener.thread.is_alive())
         self.assertIsNone(feed.reopener)
 
+    def test_reopen_switches_to_another_webcam_in_the_background(self):
+        first = np.full((HEIGHT, WIDTH, 3), 1, np.uint8)
+        second = np.full((HEIGHT * 2, WIDTH * 2, 3), 2, np.uint8)
+        old = scripted_capture([(True, first, 0.0), (True, first, 0.1)], self.clock)
+        new = Mock()
+        new.read.return_value = (True, second)
+        feed = CameraFeed(Mock(return_value=old))
+        feed.read()
+        self.clock[0] = 0.1
+        feed.read()
+        self.assertEqual(feed.frame_size, (WIDTH, HEIGHT))
+        self.assertAlmostEqual(feed.fps, 10.0)
+        feed.reopen(Mock(return_value=new))
+        old.release.assert_called_once()
+        self.assertTrue(feed.opening and feed.reconnecting)
+        feed.reopener.thread.join(timeout=2.0)
+        self.assertIs(feed.read(), second)
+        self.assertFalse(feed.opening or feed.reconnecting)
+        self.assertEqual(feed.frame_size, (WIDTH * 2, HEIGHT * 2))
+        self.assertIsNone(feed.fps)  # Measured again for the new webcam.
+        feed.release()
+
+    def test_choosing_again_while_opening_lets_the_first_one_go(self):
+        frame = np.zeros((HEIGHT, WIDTH, 3), np.uint8)
+        started = scripted_capture([(True, frame, 0.0)], self.clock)
+        opening, release_slow = threading.Event(), threading.Event()
+        slow = Mock()
+        slow.read.return_value = (True, frame)
+
+        def open_slowly():
+            opening.set()
+            release_slow.wait(2.0)
+            return slow
+
+        feed = CameraFeed(Mock(return_value=started))
+        feed.reopen(open_slowly)
+        self.assertTrue(opening.wait(2.0))
+        abandoned = feed.reopener
+        quick = Mock()
+        quick.read.return_value = (True, frame)
+        feed.reopen(Mock(return_value=quick))
+        release_slow.set()
+        abandoned.thread.join(timeout=2.0)
+        slow.release.assert_called_once()  # Opened too late: let go, not kept busy.
+        feed.reopener.thread.join(timeout=2.0)
+        feed.read()
+        self.assertIs(feed.capture, quick)
+        feed.release()
+
+    def test_settings_dialog_only_on_windows_with_a_live_webcam(self):
+        capture = Mock()
+        capture.set.return_value = True
+        feed = CameraFeed(Mock(return_value=capture))
+        with patch.object(camera_module.platform, "system", return_value="Windows"):
+            self.assertTrue(feed.open_settings())
+        capture.set.assert_called_once_with(camera_module.cv2.CAP_PROP_SETTINGS, 1)
+        with patch.object(camera_module.platform, "system", return_value="Linux"):
+            self.assertFalse(feed.open_settings())
+
+
+class FrameReaderTests(unittest.TestCase):
+    def capture(self, reads):
+        """A capture whose reads come from a queue; it blocks like a slow webcam until fed."""
+        feed = queue.Queue()
+        capture = Mock()
+        capture.read.side_effect = lambda: feed.get(timeout=2.0)
+        for read in reads:
+            feed.put(read)
+        return capture, feed
+
+    def wait_for(self, reader, expected):
+        for _ in range(200):
+            result = reader.read()
+            if result[0] == expected[0] and (result[1] is None) == (expected[1] is None):
+                return result
+            time.sleep(0.005)
+        self.fail(f"never read {expected}")
+
+    def test_each_frame_once_and_waiting_is_not_a_failure(self):
+        frame = np.zeros((HEIGHT, WIDTH, 3), np.uint8)
+        capture, feed = self.capture([(True, frame)])
+        reader = FrameReader(capture)
+        self.assertIs(self.wait_for(reader, (True, frame))[1], frame)
+        # The next image is still on its way (the read blocks): alive, nothing new.
+        self.assertEqual(reader.read(), (True, None))
+        feed.put((False, None))
+        self.wait_for(reader, (False, None))
+        feed.put((True, frame))
+        reader.release()
+        capture.release.assert_called_once()  # By the reading thread, after its last read.
+
+    def test_a_webcam_that_stops_answering_counts_as_failed(self):
+        capture, feed = self.capture([])
+        reader = FrameReader(capture, stall_seconds=0.05)
+        self.assertEqual(reader.read(), (True, None))
+        time.sleep(0.1)
+        self.assertEqual(reader.read(), (False, None))
+        feed.put((False, None))
+        reader.release()
+
+    def test_feed_waits_without_counting_failures(self):
+        frame = np.zeros((HEIGHT, WIDTH, 3), np.uint8)
+        capture = Mock()
+        capture.read.side_effect = [(True, frame)] + [(True, None)] * 50
+        feed = CameraFeed(Mock(return_value=capture), lost_after=0.0)
+        self.assertIs(feed.read(), frame)
+        for _ in range(50):
+            self.assertIsNone(feed.read())
+        self.assertFalse(feed.reconnecting)
+        capture.release.assert_not_called()
+
+    def test_feed_wraps_every_capture_after_its_first_image(self):
+        frame = np.zeros((HEIGHT, WIDTH, 3), np.uint8)
+        first, second = Mock(), Mock()
+        second.read.return_value = (True, frame)
+        wrapped = []
+
+        def wrap(capture):
+            wrapped.append(capture)
+            return capture
+
+        feed = CameraFeed(Mock(return_value=first), wrap=wrap)
+        feed.reopen(Mock(return_value=second))
+        feed.reopener.thread.join(timeout=2.0)
+        feed.read()
+        self.assertEqual(wrapped, [first, second])
+        feed.release()
+
+
+class DriverRestartTests(unittest.TestCase):
+    PATH = "\\\\?\\usb#vid_090c&pid_b371&mi_00#6&341aedb9&0&0000#{65e8773d-8f56-11d0-a3b9-00a0c9223196}\\global"
+    INSTANCE = "USB\\VID_090C&PID_B371&MI_00\\6&341AEDB9&0&0000"
+
+    def test_device_path_becomes_the_pnputil_instance_id(self):
+        self.assertEqual(device_instance_id(self.PATH), self.INSTANCE)
+        for path in (None, "", "/dev/video0"):
+            self.assertIsNone(device_instance_id(path))
+
+    def restart(self, code):
+        with patch.object(camera_module.platform, "system", return_value="Windows"), \
+                patch.object(camera_module.subprocess, "run", return_value=SimpleNamespace(returncode=code)) as run:
+            result = restart_driver(self.INSTANCE)
+        command = run.call_args.args[0]
+        self.assertEqual(command[0], "powershell")
+        self.assertIn("/restart-device", command[-1])
+        self.assertIn(f'"{self.INSTANCE}"', command[-1])
+        self.assertIn("-Verb RunAs", command[-1])  # pnputil needs the permission prompt.
+        return result
+
+    def test_outcomes(self):
+        self.assertIsNone(self.restart(0))
+        self.assertEqual(self.restart(camera_module.DRIVER_CANCELLED), t("camera.driver_cancelled"))
+        self.assertEqual(self.restart(camera_module.DRIVER_REBOOT), t("camera.driver_reboot"))
+        self.assertEqual(self.restart(5), t("camera.driver_exit", code=5))
+        with patch.object(camera_module.platform, "system", return_value="Linux"):
+            self.assertEqual(restart_driver(self.INSTANCE), t("camera.driver_windows_only"))
+
+    def test_driver_restarts_after_the_webcam_is_released_and_before_it_opens(self):
+        frame = np.zeros((HEIGHT, WIDTH, 3), np.uint8)
+        capture, reopened = Mock(), Mock()
+        reopened.read.return_value = (True, frame)
+        events, started, finish = [], threading.Event(), threading.Event()
+        capture.release.side_effect = lambda: events.append("released")
+
+        def restart():
+            events.append("restart")
+            started.set()
+            finish.wait(2.0)
+
+        def open_again():
+            events.append("open")
+            return reopened
+
+        feed = CameraFeed(Mock(return_value=capture))
+        feed.reopen(open_again, prepare=restart)
+        self.assertTrue(started.wait(2.0))
+        self.assertTrue(feed.restarting)
+        finish.set()
+        feed.reopener.thread.join(timeout=2.0)
+        self.assertFalse(feed.restarting)
+        self.assertIs(feed.read(), frame)
+        self.assertEqual(events, ["released", "restart", "open"])
+        feed.release()
+
+
+class CameraListTests(unittest.TestCase):
+    def enumerated(self, *cameras):
+        found = [SimpleNamespace(index=index, name=name) for index, name in cameras]
+        module = SimpleNamespace(enumerate_cameras=Mock(return_value=found))
+        with patch.dict("sys.modules", cv2_enumerate_cameras=module):
+            return list_cameras()
+
+    def test_virtual_cameras_and_repeats_are_left_out(self):
+        cameras = self.enumerated((0, "USB 2.0 PC Cam"), (1, "OBS Virtual Camera"), (0, "USB 2.0 PC Cam"),
+                                  (10, "VanishCam"), (2, "Logitech C920"))
+        self.assertEqual(cameras, (CameraInfo(0, "USB 2.0 PC Cam"), CameraInfo(2, "Logitech C920")))
+
+    def test_listing_failure_is_an_empty_list(self):
+        with patch.dict("sys.modules", cv2_enumerate_cameras=None):
+            self.assertEqual(list_cameras(), ())
+
+    def test_startup_camera_choice(self):
+        cameras = (CameraInfo(0, "USB 2.0 PC Cam"), CameraInfo(2, "Logitech C920"))
+        self.assertEqual(choose_camera(5, "Logitech C920", cameras), 5)  # --camera wins.
+        self.assertEqual(choose_camera(None, "Logitech C920", cameras), 2)  # Found by name.
+        self.assertEqual(choose_camera(None, "Unplugged", cameras), 0)
+        self.assertEqual(choose_camera(None, None, ()), 0)
+
 
 class ReconnectingCardTests(unittest.TestCase):
     def test_card_keeps_the_frame_size_and_draws_the_status(self):
@@ -136,7 +352,7 @@ class ReconnectLoopTests(unittest.TestCase):
             mocks.enter_context(patch.object(app.cv2, "namedWindow"))
             mocks.enter_context(patch.object(app.cv2, "resizeWindow"))
             mocks.enter_context(patch.object(app.cv2, "destroyAllWindows"))
-            mocks.enter_context(patch.object(app.cv2, "imshow", side_effect=lambda name, frame: displayed.append(frame.copy())))
+            displayed = panel.frames
             mocks.enter_context(patch.object(app.cv2, "waitKey", side_effect=wait_key))
             printed = mocks.enter_context(patch("builtins.print"))
             self.assertEqual(app.run(), 0)

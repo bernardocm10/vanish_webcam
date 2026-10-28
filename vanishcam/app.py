@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import argparse
+import platform
+import queue
 import signal
 import subprocess
 import sys
@@ -16,7 +18,10 @@ import numpy as np
 
 from .background import fit_background, load_background_image, replace_background, update_background
 from .call_audio import CallSound, VirtualMic, open_virtual_mic
-from .camera import CameraFeed, dim_for_card, open_camera, reconnecting_card
+from .camera import (
+    CameraFeed, CameraInfo, FrameReader, device_instance_id, dim_for_card, list_cameras, open_camera,
+    reconnecting_card, restart_driver,
+)
 from .cli import parse_args
 from .control_panel import ACCENTS, AMBER, FONT_DIR, FONTS, GREEN, MODE_CARDS, ControlPanel, PanelView
 from .detectors import AsyncRecognizer, create_recognizer, detection_function, detector_status
@@ -48,6 +53,13 @@ class AppState:
     fullscreen: bool = False
 
 
+def window_visible(name: str) -> bool:
+    try:
+        return cv2.getWindowProperty(name, cv2.WND_PROP_VISIBLE) >= 1
+    except cv2.error:
+        return False
+
+
 def set_fullscreen(enabled: bool) -> None:
     mode = cv2.WINDOW_FULLSCREEN if enabled else cv2.WINDOW_NORMAL
     cv2.setWindowProperty(WINDOW_NAME, cv2.WND_PROP_FULLSCREEN, mode)
@@ -62,6 +74,7 @@ def self_test() -> int:
         raise RuntimeError(t("selftest.missing", files=", ".join(missing)))
     load_log()
     import pygame.mixer  # The distributed build must contain its MP3 decoder.
+    import cv2_enumerate_cameras  # And the native helper that names the webcams in the panel.
     if sys.platform == "win32":
         import sounddevice  # And PortAudio, for the call microphone through VB-CABLE.
     create_segmenter().close()
@@ -149,16 +162,25 @@ KEY_ACTIONS = {
     ord("r"): ("reappear",),
     ord("v"): ("vanish",),
     ord("f"): ("fullscreen",),
+    ord("d"): ("detach",),
     **{ord(str(number)): ("mode", card.key) for number, card in enumerate(MODE_CARDS, start=1)},
 }
 MESSAGE_SECONDS = 6.0
 
 
+def camera_state(camera: CameraFeed) -> str:
+    if not camera.reconnecting:
+        return "live"
+    if camera.restarting:
+        return "restarting"
+    return "opening" if camera.opening else "reconnecting"
+
+
 def panel_status(
-    phase: str, mode: Mode, calibration_remaining: int | None, reconnecting: bool = False,
+    phase: str, mode: Mode, calibration_remaining: int | None, camera: str = "live",
 ) -> tuple[str, tuple[int, int, int]]:
-    if reconnecting:
-        return t("status.reconnecting"), AMBER
+    if camera != "live":
+        return t(f"status.{camera}"), AMBER
     if phase == "calibrating":
         return t("status.calibrating", seconds=calibration_remaining or 0), AMBER
     if mode.phase in ("vanishing", "vanished", "appearing"):
@@ -166,10 +188,28 @@ def panel_status(
     return t("status.ready"), GREEN
 
 
+def choose_camera(requested: int | None, saved: str | None, cameras: tuple[CameraInfo, ...]) -> int:
+    """--camera wins; then the webcam used last time, found by name (numbers shift when one is unplugged)."""
+    if requested is not None:
+        return requested
+    for camera in cameras:
+        if camera.name == saved:
+            return camera.index
+    return cameras[0].index if cameras else 0
+
+
 def run_camera(args: argparse.Namespace, resources: ExitStack, mode_name: str | None = None) -> int:
     user_data = UserData.default()
     saved = user_data.load()
     mode_name = mode_name or (saved.mode if saved.mode in MODES else "normal")
+    cameras = list_cameras()
+    camera_index = choose_camera(getattr(args, "camera", None), saved.camera, cameras)
+    # The video in its own window: asked for on the command line, or how it was left last time.
+    detached = bool(getattr(args, "video_window", False) or saved.detached)
+
+    def camera_name() -> str | None:
+        return next((camera.name for camera in cameras if camera.index == camera_index), None)
+
     chosen: Path | None = None
     background_source: np.ndarray | None = None  # Chosen picture, at its original resolution.
     if getattr(args, "background_image", None) is not None:
@@ -181,17 +221,19 @@ def run_camera(args: argparse.Namespace, resources: ExitStack, mode_name: str | 
             chosen = saved.background
         except RuntimeError as error:
             print(f"[VanishCam] {error}")
-    user_data.save(Settings(mode_name, chosen))
+    user_data.save(Settings(mode_name, chosen, camera_name(), detached))
     gallery = tuple(user_data.gallery())
 
     download_models(mode_name)
 
     def open_capture() -> cv2.VideoCapture:
-        capture = open_camera(args.camera, args.width, args.height)
+        # Reads camera_index when called: reopening after a switch opens the new webcam.
+        capture = open_camera(camera_index, args.width, args.height)
         capture.set(cv2.CAP_PROP_FPS, args.fps)
         return capture
 
-    camera = CameraFeed(open_capture)
+    # Read in its own thread: a slow webcam never freezes the window.
+    camera = CameraFeed(open_capture, wrap=FrameReader)
     resources.callback(camera.release)
     segmenter = create_segmenter()
     resources.callback(segmenter.close)
@@ -201,15 +243,17 @@ def run_camera(args: argparse.Namespace, resources: ExitStack, mode_name: str | 
     # Closes whichever effect is active at that point, also after a mode switch.
     resources.callback(lambda: effect.close())
     resources.callback(cv2.destroyAllWindows)
-    # GUI_NORMAL: just the video, without the Qt toolbar.
-    cv2.namedWindow(WINDOW_NAME, cv2.WINDOW_NORMAL | cv2.WINDOW_KEEPRATIO | cv2.WINDOW_GUI_NORMAL)
-    cv2.resizeWindow(WINDOW_NAME, args.width, args.height)
     panel = ControlPanel()
     resources.callback(panel.close)
 
+    def apply_fullscreen(enabled: bool) -> None:
+        # Detached, the video goes fullscreen in its own window; otherwise the app window shows only the video.
+        if detached:
+            set_fullscreen(enabled)
+        else:
+            panel.set_fullscreen(enabled)
+
     state = AppState(calibration_started=time.perf_counter(), fullscreen=args.fullscreen)
-    if state.fullscreen:
-        set_fullscreen(True)
 
     background: np.ndarray | None = None
     real_background: np.ndarray | None = None  # Last real background: switching back needs no recalibration.
@@ -219,8 +263,35 @@ def run_camera(args: argparse.Namespace, resources: ExitStack, mode_name: str | 
     calibration_remaining = None
     last_gesture_report = float("-inf")
     message, message_until = "", float("-inf")
+    # Driver restarts finish off the video thread: their outcome (None or why it failed) comes back here.
+    driver_results: queue.SimpleQueue[str | None] = queue.SimpleQueue()
+    camera_detail, camera_detail_at = "", float("-inf")
     started = state.calibration_started
     width = height = 0
+
+    def set_detached(enabled: bool) -> None:
+        """Move the video to its own window (a second monitor, OBS's window capture) or back beside the panel."""
+        nonlocal detached
+        if state.fullscreen:
+            state.fullscreen = False
+            apply_fullscreen(False)
+        detached = enabled
+        if enabled:
+            # GUI_NORMAL: just the video, without the Qt toolbar.
+            cv2.namedWindow(WINDOW_NAME, cv2.WINDOW_NORMAL | cv2.WINDOW_KEEPRATIO | cv2.WINDOW_GUI_NORMAL)
+            cv2.resizeWindow(WINDOW_NAME, width or args.width, height or args.height)
+        else:
+            try:
+                cv2.destroyWindow(WINDOW_NAME)
+            except cv2.error:
+                pass  # Already closed by the user.
+        panel.set_detached(enabled)
+        user_data.save(Settings(effect.name, chosen, camera_name(), detached))
+
+    if detached:
+        set_detached(True)
+    if state.fullscreen:
+        apply_fullscreen(True)
     if background_source is None:
         print(f"[VanishCam] {t('loop.step_out')}")
     else:
@@ -257,8 +328,27 @@ def run_camera(args: argparse.Namespace, resources: ExitStack, mode_name: str | 
             effect = EffectRuntime(previous, segment, mic)
             notify(t("loop.mode_failed", name=name, error=error), time.perf_counter())
             return
-        user_data.save(Settings(name, chosen))
+        user_data.save(Settings(name, chosen, camera_name(), detached))
         print(f"[{effect.mode.title}] {effect.mode.instructions}")
+
+    def reopen_camera(now: float) -> None:
+        """Let the webcam go, restart its driver (Windows, after the permission prompt), open it again."""
+        device = next((info for info in cameras if info.index == camera_index), None)
+        instance = device_instance_id(device.path) if device is not None else None
+        if instance is None or platform.system() != "Windows":
+            camera.reopen()
+            return
+        notify(t("camera.driver_restarting"), now)
+        camera.reopen(prepare=lambda: driver_results.put(restart_driver(instance)))
+
+    def switch_camera(index: int, now: float) -> None:
+        nonlocal camera_index
+        if index == camera_index and not camera.reconnecting:
+            return
+        camera_index = index
+        camera.reopen(open_capture)
+        user_data.save(Settings(effect.name, chosen, camera_name(), detached))
+        notify(t("camera.switched", name=camera_name() or t("panel.camera_number", index=index)), now)
 
     def choose_background(path: Path | None, now: float) -> None:
         nonlocal chosen, background_source, background
@@ -280,10 +370,10 @@ def run_camera(args: argparse.Namespace, resources: ExitStack, mode_name: str | 
             state.phase = "running"
             background_samples.clear()
             effect.mode.reset()
-        user_data.save(Settings(effect.name, chosen))
+        user_data.save(Settings(effect.name, chosen, camera_name(), detached))
 
     def handle(action: tuple, now: float) -> None:
-        nonlocal gallery
+        nonlocal gallery, cameras
         kind = action[0]
         running = state.phase == "running"
         if kind == "mode":
@@ -314,7 +404,17 @@ def run_camera(args: argparse.Namespace, resources: ExitStack, mode_name: str | 
             effect.mode.vanish(now)
         elif kind == "fullscreen":
             state.fullscreen = not state.fullscreen
-            set_fullscreen(state.fullscreen)
+            apply_fullscreen(state.fullscreen)
+        elif kind == "cameras":
+            cameras = list_cameras()
+        elif kind == "camera":
+            switch_camera(action[1], now)
+        elif kind == "reopen_camera":
+            reopen_camera(now)
+        elif kind == "camera_settings" and not camera.open_settings():
+            notify(t("camera.settings_unavailable"), now)
+        elif kind == "detach":
+            set_detached(not detached)
 
     card_base: np.ndarray | None = None  # Last image sent, dimmed: background of the reconnecting card.
     card: tuple[tuple[int, bool], np.ndarray] | None = None
@@ -324,21 +424,24 @@ def run_camera(args: argparse.Namespace, resources: ExitStack, mode_name: str | 
             frame = camera.read()
             now = time.perf_counter()
             mode = effect.mode
-            if frame is None and not camera.reconnecting:
-                # A dropped frame, or the first ones after opening: wait for the next one.
-                time.sleep(0.01)
-                continue
-            if frame is None:
+            # No new image yet (a slow webcam, a dropped frame, the first ones after opening):
+            # keep the window responsive, without redoing the video work or sending a frame twice.
+            waiting = frame is None and not camera.reconnecting
+            if waiting:
+                display = last_display
+            elif frame is None:
                 if card_base is None:
-                    print(f"[VanishCam] {t('camera.lost')}")
+                    if not camera.opening:
+                        print(f"[VanishCam] {t('camera.lost')}")
                     card_base = dim_for_card(last_display, width or args.width, height or args.height)
                 lost = now - camera.lost_since
                 # Redrawn only when the seconds or the blinking lamp change.
                 seconds, lamp_on = int(lost), int(lost * 2) % 2 == 0
-                if card is None or card[0] != (seconds, lamp_on):
-                    card = (seconds, lamp_on), reconnecting_card(
-                        card_base, t("reconnect.title"), t("reconnect.detail", index=args.camera, seconds=seconds), lamp_on,
-                    )
+                title = t({"restarting": "reconnect.restarting_title", "opening": "reconnect.opening_title"}.get(
+                    camera_state(camera), "reconnect.title"))
+                if card is None or card[0] != (seconds, lamp_on, title):
+                    detail = t("reconnect.detail", index=camera_index, seconds=seconds)
+                    card = (seconds, lamp_on, title), reconnecting_card(card_base, title, detail, lamp_on)
                 display = card[1]
             else:
                 if card_base is not None:
@@ -355,7 +458,7 @@ def run_camera(args: argparse.Namespace, resources: ExitStack, mode_name: str | 
                     # The webcam may not support the requested resolution: fit the
                     # window to the real one, without stretching the image.
                     print(f"[VanishCam] {t('camera.resolution', width=width, height=height)}")
-                    if (width, height) != (args.width, args.height):
+                    if detached and (width, height) != (args.width, args.height):
                         cv2.resizeWindow(WINDOW_NAME, width, height)
                     virtual_camera = open_virtual_camera(args, width, height)
                     virtual_camera_initialized = True
@@ -424,24 +527,45 @@ def run_camera(args: argparse.Namespace, resources: ExitStack, mode_name: str | 
 
                 last_display = display
 
-            if virtual_camera is not None:
-                send_virtual_frame(virtual_camera, display)
-            cv2.imshow(WINDOW_NAME, display)
-            status, status_color = panel_status(state.phase, mode, calibration_remaining, camera.reconnecting)
+            if not waiting:
+                if virtual_camera is not None:
+                    send_virtual_frame(virtual_camera, display)
+                if detached:
+                    cv2.imshow(WINDOW_NAME, display)
+            if now - camera_detail_at >= 1.0 and camera.frame_size is not None:
+                # Once a second: a steadier number, and the panel is not redrawn every frame.
+                camera_detail_at = now
+                camera_detail = t("panel.camera_live", width=camera.frame_size[0], height=camera.frame_size[1],
+                                  fps=round(camera.fps or 0))
+            while not driver_results.empty():
+                error = driver_results.get()
+                notify(t("camera.driver_restarted") if error is None else t("camera.driver_failed", error=error), now)
+            status, status_color = panel_status(state.phase, mode, calibration_remaining, camera_state(camera))
             panel.show(PanelView(
                 mode=effect.name, status=status, status_color=status_color, background=chosen,
                 gallery=gallery, manual_keys=mode.manual_keys, can_recapture=background_source is None,
                 fullscreen=state.fullscreen, message=message if now < message_until else "",
-            ))
+                cameras=cameras, camera_index=camera_index, camera_detail=camera_detail,
+                camera_state=camera_state(camera),
+                can_adjust=platform.system() == "Windows", detached=detached,
+            ), display)
 
-            key = cv2.waitKey(1) & 0xFF
-            if key in (ord("q"), 27) or panel.closed:
+            key = cv2.waitKey(5 if waiting else 1) & 0xFF
+            if key == 27 and state.fullscreen:
+                # Esc leaves fullscreen first, like everywhere else; Q still quits.
+                key = ord("f")
+            elif key in (ord("q"), 27) or panel.closed:
                 break
+            if detached and display is not None and not window_visible(WINDOW_NAME):
+                # Closing the video window brings the video back beside the panel; only the panel quits.
+                set_detached(False)
             actions = panel.poll()
             if key in KEY_ACTIONS:
                 actions.append(KEY_ACTIONS[key])
             for action in actions:
                 handle(action, now)
+            if waiting:
+                continue
             if virtual_camera is not None:
                 virtual_camera.sleep_until_next_frame()
             elif frame is None:

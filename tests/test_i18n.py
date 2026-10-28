@@ -63,7 +63,7 @@ class CommandLineLanguageTests(unittest.TestCase):
         with patch("sys.stdout") as stdout, self.assertRaises(SystemExit):
             app.parse_args(["--lang", "pt", "--help"])
         printed = "".join(call.args[0] for call in stdout.write.call_args_list)
-        self.assertIn("Índice da webcam", printed)
+        self.assertIn("Número da webcam", printed)
 
     def test_mode_titles_follow_the_language(self):
         from vanishcam.modes import ParticlesMode

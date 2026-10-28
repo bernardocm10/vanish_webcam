@@ -49,11 +49,24 @@ class FakePanel:
 
     def __init__(self, actions=()):
         self.actions = list(actions)
-        self.views, self.real_backgrounds = [], []
+        self.views, self.frames, self.real_backgrounds = [], [], []
+        self.fullscreen, self.detached = [], []
+        self.last = None
         self.closed = False
 
-    def show(self, view):
+    def show(self, view, video=None):
+        # The video shown beside the panel: what the user sees. While no new frame comes the
+        # app shows the same one again, like ControlPanel nothing new is drawn then.
         self.views.append(view)
+        if video is not None and (not self.frames or video is not self.last):
+            self.frames.append(video.copy())
+        self.last = video
+
+    def set_fullscreen(self, enabled):
+        self.fullscreen.append(enabled)
+
+    def set_detached(self, enabled):
+        self.detached.append(enabled)
 
     def poll(self):
         # An action can be a function of the panel: useful when it depends on what already happened.
@@ -67,12 +80,16 @@ class FakePanel:
         pass
 
 
-def app_mocks(mocks, segmenter, recognizer, actions=()):
+def app_mocks(mocks, segmenter, recognizer, actions=(), cameras=()):
     """Fake models, a fake panel and preferences in a temporary folder."""
     mocks.enter_context(patch.object(app, "create_segmenter", return_value=segmenter))
     mocks.enter_context(patch.object(app, "create_recognizer", return_value=recognizer))
     panel = FakePanel(actions)
     mocks.enter_context(patch.object(app, "ControlPanel", return_value=panel))
+    # No real webcam listing in tests: the camera number from the arguments is used.
+    mocks.enter_context(patch.object(app, "list_cameras", return_value=cameras))
+    # Frames read on the video thread, in order: the scripted captures stay deterministic.
+    mocks.enter_context(patch.object(app, "FrameReader", lambda capture: capture))
     folder = mocks.enter_context(tempfile.TemporaryDirectory())
     user_data = app.UserData(Path(folder))
     mocks.enter_context(patch.object(app.UserData, "default", return_value=user_data))
@@ -147,7 +164,7 @@ class VideoLoopTests(unittest.TestCase):
             mocks.enter_context(patch.object(app, "parse_args", return_value=arguments()))
             mocks.enter_context(patch.object(app, "download_models"))
             mocks.enter_context(patch.object(app, "open_camera", return_value=capture))
-            app_mocks(mocks, segmenter, recognizer)
+            panel, _ = app_mocks(mocks, segmenter, recognizer)
             opening = mocks.enter_context(patch.object(app, "open_virtual_camera", return_value=camera))
             mocks.enter_context(patch.object(segmentation, "person_mask", return_value=np.ones((24, 40), np.float32)))
             mocks.enter_context(patch.object(detectors, "recognize_gesture", return_value=gesture))
@@ -156,7 +173,7 @@ class VideoLoopTests(unittest.TestCase):
             mocks.enter_context(patch.object(app.cv2, "namedWindow"))
             mocks.enter_context(patch.object(app.cv2, "resizeWindow"))
             destroy = mocks.enter_context(patch.object(app.cv2, "destroyAllWindows"))
-            mocks.enter_context(patch.object(app.cv2, "imshow", side_effect=lambda name, frame: displayed.append(frame.copy())))
+            displayed = panel.frames
             keys = (0, 0, ord("v") if gesture[0] != "Victory" else 0, 0, ord("q"))
             mocks.enter_context(patch.object(app.cv2, "waitKey", side_effect=keys))
             mocks.enter_context(patch.object(app.cv2, "putText", side_effect=AssertionError("No text may be drawn over the video")))
@@ -188,7 +205,7 @@ class VideoLoopTests(unittest.TestCase):
             mocks.enter_context(patch.object(app, "parse_args", return_value=args))
             mocks.enter_context(patch.object(app, "download_models"))
             mocks.enter_context(patch.object(app, "open_camera", return_value=capture))
-            app_mocks(mocks, Mock(), Mock())
+            panel, _ = app_mocks(mocks, Mock(), Mock())
             loaded = mocks.enter_context(patch.object(
                 app, "load_background_image", return_value=np.full((48, 80, 3), 30, np.uint8),
             ))
@@ -199,7 +216,7 @@ class VideoLoopTests(unittest.TestCase):
             mocks.enter_context(patch.object(app.cv2, "namedWindow"))
             mocks.enter_context(patch.object(app.cv2, "resizeWindow"))
             mocks.enter_context(patch.object(app.cv2, "destroyAllWindows"))
-            mocks.enter_context(patch.object(app.cv2, "imshow", side_effect=lambda name, frame: displayed.append(frame.copy())))
+            displayed = panel.frames
             mocks.enter_context(patch.object(app.cv2, "waitKey", side_effect=(0, ord("v"), ord("q"))))
             mocks.enter_context(patch("builtins.print"))
             self.assertEqual(app.run(), 0)

@@ -36,6 +36,8 @@ def config_dir() -> Path:
 class Settings:
     mode: str | None = None
     background: Path | None = None
+    camera: str | None = None  # By name: the numbers shift when a webcam is unplugged.
+    detached: bool = False  # The video in its own window.
 
 
 class UserData:
@@ -60,12 +62,16 @@ class UserData:
         # A picture deleted in the meantime falls back to the real background.
         if not isinstance(background, str) or not Path(background).is_file():
             background = None
-        return Settings(mode, Path(background) if background else None)
+        camera = data.get("camera") if isinstance(data.get("camera"), str) else None
+        detached = data.get("detached") is True
+        return Settings(mode, Path(background) if background else None, camera, detached)
 
     def save(self, settings: Settings) -> None:
         data = {
             "mode": settings.mode,
             "background": str(settings.background) if settings.background else None,
+            "camera": settings.camera,
+            "detached": settings.detached,
         }
         try:
             self.root.mkdir(parents=True, exist_ok=True)
