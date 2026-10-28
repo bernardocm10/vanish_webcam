@@ -3,7 +3,9 @@ __pycache__/
 .pytest_cache/
 .venv/
 .venv-local/
-models/
+# Downloaded on first run; the hand and face models are versioned.
+models/gesture_recognizer.task
+models/selfie_segmenter_landscape.tflite
 *.part
 /build/
 /dist/*

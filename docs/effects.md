@@ -57,5 +57,5 @@ You freeze into a statue of grey ash, the ash spreading from your head down whil
 
 - **No anime frames or copyrighted assets** are included in the project.
 - The [wooden log](../assets/substitution_log.png) is an original illustration generated with ImageGen, using a supplied image as a visual reference.
-- The **smoke** is drawn in real time by `naruto_effect.py`, so it follows your position and scales with the video. A [CC0 smoke sprite sheet](https://opengameart.org/content/smoke-sprite-sheet) was considered, but the procedural animation adapts better to where you are in the frame.
-- Goku's **speed lines** are drawn in code by `goku_effect.py`. Gesture detection runs in a background thread, so the video never waits for the models.
+- The **smoke** is drawn in real time by `vanishcam/effects/naruto.py`, so it follows your position and scales with the video. A [CC0 smoke sprite sheet](https://opengameart.org/content/smoke-sprite-sheet) was considered, but the procedural animation adapts better to where you are in the frame.
+- Goku's **speed lines** are drawn in code by `vanishcam/effects/goku.py`. Gesture detection runs in a background thread, so the video never waits for the models.

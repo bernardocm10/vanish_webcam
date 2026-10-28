@@ -17,14 +17,14 @@ Everything runs on your computer: the video is never recorded or sent anywhere, 
 
 ## Quick start
 
-**Windows:** double-click `start.bat`. The first run installs everything it needs (internet required once).
+**Windows:** double-click `scripts\windows\start.bat`. The first run installs everything it needs (internet required once).
 
 **Linux:**
 
 ```bash
 python3 -m venv .venv
 .venv/bin/pip install -r requirements.txt
-.venv/bin/python vanish_cam.py
+.venv/bin/python -m vanishcam
 ```
 
 Two windows open: the video and the **VanishCam** control panel. Then:

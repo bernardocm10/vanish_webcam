@@ -38,11 +38,11 @@ It follows your system language (see [Language](configuration.md#language)). Thi
 Pick it in **B · Background**, or start the app with one from the command line:
 
 ```bash
-.venv/bin/python vanish_cam.py --background-image ~/Pictures/beach.jpg
+.venv/bin/python -m vanishcam --background-image ~/Pictures/beach.jpg
 ```
 
 ```powershell
-.\start.bat --background-image C:\Users\me\Pictures\beach.jpg
+.\scripts\windows\start.bat --background-image C:\Users\me\Pictures\beach.jpg
 ```
 
 - The picture fills the whole frame without being stretched (the excess is cropped from the center) and is never mirrored.
