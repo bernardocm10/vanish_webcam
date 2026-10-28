@@ -29,7 +29,8 @@ from .detectors import AsyncRecognizer, create_meme_detector, detector_status
 from .effects.naruto import load_log
 from .i18n import t
 from .models import SEGMENTER_MODEL, download_models
-from .modes import MODES, FrameInfo, Mode
+from .memes import DETECT_INTERVAL as MEME_INTERVAL, MemeLayer
+from .modes import MODES, FrameInfo, Mode, half_resolution_rgb
 from .segmentation import PersonSegmenter, create_segmenter
 from .shortcuts import ESCAPE_CODES, Shortcuts, normalize
 from .sound import VanishSound
@@ -53,6 +54,7 @@ class AppState:
     last_background_update: float = float("-inf")
     fullscreen: bool = False
     quitting: bool = False  # A quit shortcut: leave like closing the window.
+    last_meme_check: float = float("-inf")
 
 
 def window_visible(name: str) -> bool:
@@ -253,6 +255,29 @@ def run_camera(args: argparse.Namespace, resources: ExitStack, mode_name: str | 
     resources.callback(cv2.destroyAllWindows)
     panel = ControlPanel()
     resources.callback(panel.close)
+
+    # Memes: their own detector, only while some gesture is on; the layer draws over any effect.
+    meme_layer = MemeLayer()
+    meme_recognizer = None
+    meme_detector: AsyncRecognizer | None = None
+
+    def sync_meme_detector() -> None:
+        nonlocal meme_recognizer, meme_detector
+        if memes.active() and meme_detector is None:
+            try:
+                meme_recognizer = create_meme_detector()
+            except Exception as error:
+                # Without the memes the effects still work: say why and carry on.
+                print(f"[Memes] {t('memes.failed', error=error)}")
+                return
+            meme_detector = AsyncRecognizer(meme_recognizer.recognize, meme_recognizer.close)
+        elif not memes.active() and meme_detector is not None:
+            meme_detector.close()
+            meme_recognizer = meme_detector = None
+            meme_layer.clear()
+
+    sync_meme_detector()
+    resources.callback(lambda: meme_detector is not None and meme_detector.close())
 
     def apply_fullscreen(enabled: bool) -> None:
         # Detached, the video goes fullscreen in its own window; otherwise the app window shows only the video.
@@ -547,6 +572,16 @@ def run_camera(args: argparse.Namespace, resources: ExitStack, mode_name: str | 
                             print(f"[Gesture] {detector_status(effect.recognizer, detected[0])}")
                             last_gesture_report = now
                     display = mode.render(FrameInfo(frame, background, now, elapsed_ms))
+                    if meme_detector is not None:
+                        if now - state.last_meme_check >= MEME_INTERVAL and not meme_detector.busy:
+                            state.last_meme_check = now
+                            meme_recognizer.enabled = memes.active()
+                            meme_detector.submit(half_resolution_rgb(camera_frame), elapsed_ms)
+                        found = meme_detector.take_result()
+                        if found is not None:
+                            meme_layer.on_detection(found[0], now, memes)
+                    # On a copy: the effect's own frames (a frozen vanished one) stay clean.
+                    display = meme_layer.render(display, now)
 
                     # The background follows light and small movements, even while invisible.
                     if (
