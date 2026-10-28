@@ -4,7 +4,7 @@
 
 <img src="panel.png" alt="VanishCam control panel" width="300" align="right">
 
-The **VanishCam** panel opens next to the video. Everything you click lives here, so the video you send to a call shows only you and the effect.
+VanishCam opens a single window: the panel on the left and the live video filling the rest. Resize or maximize it and the video grows with it, never stretched. Everything you click lives in the panel, so the video you send to a call shows only you and the effect.
 
 The panel is styled like a broadcast control surface: a light faceplate, black ink, and a single red signal color for whatever is live.
 
@@ -17,10 +17,10 @@ It follows your system language (see [Language](configuration.md#language)). Thi
 | Lamp | Meaning |
 | --- | --- |
 | Green | Ready: make the gesture |
-| Amber | Capturing the background: step out of the frame |
+| Amber | Capturing the background (step out of the frame), or opening the camera |
 | Red | Vanishing, invisible, or reappearing |
 
-**A · Effect** (*Efeito*) — click a row, or press `1`–`5`, to switch effect. The active one is the inverted row marked **■ LIVE** (*ATIVO*). Switching keeps the camera, the virtual webcam, the call microphone, and the background as they are: no restart, no new calibration.
+**A · Effect** (*Efeito*) — the active effect. Click it to open the list and pick another, or press `1`–`5`; the active one is marked **■ LIVE** (*ATIVO*). Switching keeps the camera, the virtual webcam, the call microphone, and the background as they are: no restart, no new calibration.
 
 **B · Background** (*Fundo*) — choose what is behind you:
 
@@ -29,7 +29,14 @@ It follows your system language (see [Language](configuration.md#language)). Thi
 - **ADD** (*ADICIONAR*) opens your system's file picker and copies the picture into the gallery (up to 7; the oldest is removed first).
 - Hover over a picture and click **×** to remove it from the gallery. Your original file is never touched.
 
-**C · Controls** (*Controles*) — the same actions as the keyboard: **VANISH** (*SUMIR*, `V`), **REAPPEAR** (*REAPARECER*, `R`), **NEW BACKGROUND** (*NOVO FUNDO*, `SPACE`), **FULLSCREEN** (*TELA CHEIA*, `F`). Keys that do not apply right now are greyed out.
+**C · Camera** (*Câmera*) — the webcam in use and how it is doing:
+
+- The lamp is green while the webcam sends images and amber while it is opening or reconnecting. Under the name: the real resolution and frame rate.
+- Click the name to pick another webcam. The list is read again each time it opens, so a webcam plugged in meanwhile shows up. Virtual cameras (OBS Virtual Camera and the like) are left out: they are outputs, and reading one back would loop the video.
+- **REOPEN** (*REABRIR*) lets the webcam go and opens it again, without stopping the app: it fixes most frozen or black images.
+- **SETTINGS** (*AJUSTES*) opens the webcam driver's own settings window (exposure, focus, white balance). Windows only.
+
+**D · Controls** (*Controles*) — the same actions as the keyboard: **VANISH** (*SUMIR*, `V`), **REAPPEAR** (*REAPARECER*, `R`), **NEW BACKGROUND** (*NOVO FUNDO*, `SPACE`), **FULLSCREEN** (*TELA CHEIA*, `F`). Keys that do not apply right now are greyed out.
 
 <br clear="right">
 
@@ -53,7 +60,7 @@ Pick it in **B · Background**, or start the app with one from the command line:
 
 ## Keyboard shortcuts
 
-They work in both the video window and the panel:
+They work anywhere in the window:
 
 | Key | Action |
 | --- | --- |
@@ -61,14 +68,14 @@ They work in both the video window and the panel:
 | `V` | Vanish now, without the gesture |
 | `R` | Reappear |
 | `SPACE` | Capture a new real background |
-| `F` | Toggle fullscreen |
-| `Q` or `ESC` | Quit and release the camera |
+| `F` | Fullscreen with only the video; again (or `ESC`) to bring the panel back |
+| `Q` or `ESC` | Quit and release the camera (`ESC` leaves fullscreen first) |
 
-`V` and `R` are disabled in Goku mode. Closing the panel window also quits the app.
+`V` and `R` are disabled in Goku mode. Closing the window also quits the app.
 
 ## Saved preferences
 
-The app remembers the last effect and background and starts with them next time. `--mode` and `--background-image` override them for one launch.
+The app remembers the last effect, background, and webcam, and starts with them next time. The webcam is remembered by name, so it is found again even if its number changes. `--mode`, `--background-image`, and `--camera` override them for one launch.
 
 | System | Folder |
 | --- | --- |

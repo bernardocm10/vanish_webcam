@@ -28,7 +28,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         set_language(chosen.lang)
 
     parser = argparse.ArgumentParser(prog="vanishcam", description=t("cli.description"))
-    parser.add_argument("--camera", type=int, default=0, help=t("cli.camera"))
+    # None: the webcam used last time (or the first one found).
+    parser.add_argument("--camera", type=int, default=None, help=t("cli.camera"))
     # 1280x720 is the native 16:9 of most webcams (through MJPG):
     # video calls must not stretch a 4:3 picture.
     parser.add_argument("--width", type=int, default=1280, help=t("cli.width"))
@@ -52,6 +53,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--background-image", type=Path, metavar=t("cli.background_metavar"),
         help=t("cli.background_image"),
     )
+    parser.add_argument("--video-window", action="store_true", help=t("cli.video_window"))
     parser.add_argument("--gesture-debug", action="store_true", help=t("cli.gesture_debug"))
     parser.add_argument("--lang", choices=LANGUAGES, help=t("cli.lang"))
     parser.add_argument("--self-test", action="store_true", help=argparse.SUPPRESS)

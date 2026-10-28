@@ -10,14 +10,15 @@ Pass them after the start command, for example `.venv/bin/python -m vanishcam --
 | --- | --- |
 | `--mode normal\|naruto\|goku\|particles\|ash` | Effect to start with (default: the last one used) |
 | `--background-image FILE` | Picture to start with as the background (default: the last one used) |
-| `--camera N` | Webcam number (default: 0) |
+| `--camera N` | Webcam number (default: the one used last time, or the first found); you can also pick it in the panel |
 | `--width`, `--height` | Requested resolution (default: 1280x720) |
 | `--fps N` | Maximum frame rate sent to the virtual webcam (default: 30) |
 | `--virtual-camera` / `--no-virtual-camera` | Require or disable the virtual webcam (default: use it if available) |
 | `--virtual-backend`, `--virtual-device` | Pick the virtual webcam driver and device |
 | `--call-audio` | Send your voice plus the effect sounds to the call: **VanishCam Mic** on Linux (PipeWire), **CABLE Output** on Windows ([VB-CABLE](calls.md#windows-call-microphone-with-vb-cable)) |
 | `--no-mirror` | Do not mirror the video |
-| `--fullscreen` | Start in fullscreen |
+| `--fullscreen` | Start in fullscreen, with only the video |
+| `--video-window` | Also open the clean video in its own **VanishCam - Video** window, for OBS's window capture |
 | `--static-background` | Keep the captured background as it is instead of updating it |
 | `--gesture-debug` | Print gesture recognition details in the terminal |
 | `--lang en\|pt` | Interface language (default: the system language) |
@@ -33,7 +34,7 @@ The panel, the terminal messages, the errors, and `--help` are in English or Bra
 
 The app asks the webcam for 1280x720 in MJPG, the format that lets most USB webcams run at full frame rate. If the webcam does not support it, the app uses whatever resolution the webcam returns and keeps its aspect ratio.
 
-If the wrong camera opens, try `--camera 1` (or 2, 3…). If the app says the webcam is unavailable, close other apps that are using it.
+If the wrong camera opens, pick the right one in **C · Camera** in the panel; the app remembers it. If the app says the webcam is unavailable, close other apps that are using it, then click **REOPEN**.
 
 ### If the webcam disconnects
 

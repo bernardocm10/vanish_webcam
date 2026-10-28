@@ -4,5 +4,7 @@ numpy>=2.0,<3
 pyvirtualcam>=0.15,<1
 pygame>=2.6,<3
 pillow>=10.1,<14
+# Webcam names for the camera menu.
+cv2_enumerate_cameras>=1.1,<2
 # Call microphone on Windows (through VB-CABLE); Linux uses PipeWire.
 sounddevice>=0.5,<1; sys_platform == "win32"

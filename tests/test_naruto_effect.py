@@ -271,7 +271,7 @@ class NarutoVideoLoopTests(unittest.TestCase):
             mocks.enter_context(patch.object(app, "parse_args", return_value=arguments(mode="naruto")))
             mocks.enter_context(patch.object(app, "download_models"))
             mocks.enter_context(patch.object(app, "open_camera", return_value=capture))
-            app_mocks(mocks, segmenter, recognizer)
+            panel, _ = app_mocks(mocks, segmenter, recognizer)
             mocks.enter_context(patch.object(app, "VanishSound", return_value=sound))
             mocks.enter_context(patch.object(app, "open_virtual_camera", return_value=virtual))
             mocks.enter_context(patch.object(segmentation, "person_mask", return_value=np.ones((80, 120), np.float32)))
@@ -280,7 +280,7 @@ class NarutoVideoLoopTests(unittest.TestCase):
             mocks.enter_context(patch.object(app.cv2, "namedWindow"))
             mocks.enter_context(patch.object(app.cv2, "resizeWindow"))
             mocks.enter_context(patch.object(app.cv2, "destroyAllWindows"))
-            mocks.enter_context(patch.object(app.cv2, "imshow", side_effect=lambda name, frame: preview.append(frame.copy())))
+            preview = panel.frames
             mocks.enter_context(patch.object(app.cv2, "waitKey", side_effect=(0, 0, 0, 0, 0, ord("q"))))
             mocks.enter_context(patch.object(app.cv2, "putText", side_effect=AssertionError("No text may be drawn over the video")))
             mocks.enter_context(patch("builtins.print"))

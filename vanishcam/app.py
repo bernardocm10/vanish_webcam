@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import platform
 import signal
 import subprocess
 import sys
@@ -16,7 +17,7 @@ import numpy as np
 
 from .background import fit_background, load_background_image, replace_background, update_background
 from .call_audio import CallSound, VirtualMic, open_virtual_mic
-from .camera import CameraFeed, dim_for_card, open_camera, reconnecting_card
+from .camera import CameraFeed, CameraInfo, dim_for_card, list_cameras, open_camera, reconnecting_card
 from .cli import parse_args
 from .control_panel import ACCENTS, AMBER, FONT_DIR, FONTS, GREEN, MODE_CARDS, ControlPanel, PanelView
 from .detectors import AsyncRecognizer, create_recognizer, detection_function, detector_status
@@ -62,6 +63,7 @@ def self_test() -> int:
         raise RuntimeError(t("selftest.missing", files=", ".join(missing)))
     load_log()
     import pygame.mixer  # The distributed build must contain its MP3 decoder.
+    import cv2_enumerate_cameras  # And the native helper that names the webcams in the panel.
     if sys.platform == "win32":
         import sounddevice  # And PortAudio, for the call microphone through VB-CABLE.
     create_segmenter().close()
@@ -155,10 +157,10 @@ MESSAGE_SECONDS = 6.0
 
 
 def panel_status(
-    phase: str, mode: Mode, calibration_remaining: int | None, reconnecting: bool = False,
+    phase: str, mode: Mode, calibration_remaining: int | None, reconnecting: bool = False, opening: bool = False,
 ) -> tuple[str, tuple[int, int, int]]:
     if reconnecting:
-        return t("status.reconnecting"), AMBER
+        return t("status.opening" if opening else "status.reconnecting"), AMBER
     if phase == "calibrating":
         return t("status.calibrating", seconds=calibration_remaining or 0), AMBER
     if mode.phase in ("vanishing", "vanished", "appearing"):
@@ -166,10 +168,26 @@ def panel_status(
     return t("status.ready"), GREEN
 
 
+def choose_camera(requested: int | None, saved: str | None, cameras: tuple[CameraInfo, ...]) -> int:
+    """--camera wins; then the webcam used last time, found by name (numbers shift when one is unplugged)."""
+    if requested is not None:
+        return requested
+    for camera in cameras:
+        if camera.name == saved:
+            return camera.index
+    return cameras[0].index if cameras else 0
+
+
 def run_camera(args: argparse.Namespace, resources: ExitStack, mode_name: str | None = None) -> int:
     user_data = UserData.default()
     saved = user_data.load()
     mode_name = mode_name or (saved.mode if saved.mode in MODES else "normal")
+    cameras = list_cameras()
+    camera_index = choose_camera(getattr(args, "camera", None), saved.camera, cameras)
+    video_window = getattr(args, "video_window", False)
+
+    def camera_name() -> str | None:
+        return next((camera.name for camera in cameras if camera.index == camera_index), None)
     chosen: Path | None = None
     background_source: np.ndarray | None = None  # Chosen picture, at its original resolution.
     if getattr(args, "background_image", None) is not None:
@@ -181,13 +199,14 @@ def run_camera(args: argparse.Namespace, resources: ExitStack, mode_name: str | 
             chosen = saved.background
         except RuntimeError as error:
             print(f"[VanishCam] {error}")
-    user_data.save(Settings(mode_name, chosen))
+    user_data.save(Settings(mode_name, chosen, camera_name()))
     gallery = tuple(user_data.gallery())
 
     download_models(mode_name)
 
     def open_capture() -> cv2.VideoCapture:
-        capture = open_camera(args.camera, args.width, args.height)
+        # Reads camera_index when called: reopening after a switch opens the new webcam.
+        capture = open_camera(camera_index, args.width, args.height)
         capture.set(cv2.CAP_PROP_FPS, args.fps)
         return capture
 
@@ -201,15 +220,23 @@ def run_camera(args: argparse.Namespace, resources: ExitStack, mode_name: str | 
     # Closes whichever effect is active at that point, also after a mode switch.
     resources.callback(lambda: effect.close())
     resources.callback(cv2.destroyAllWindows)
-    # GUI_NORMAL: just the video, without the Qt toolbar.
-    cv2.namedWindow(WINDOW_NAME, cv2.WINDOW_NORMAL | cv2.WINDOW_KEEPRATIO | cv2.WINDOW_GUI_NORMAL)
-    cv2.resizeWindow(WINDOW_NAME, args.width, args.height)
+    if video_window:
+        # The clean video on its own, for OBS's window capture. GUI_NORMAL: without the Qt toolbar.
+        cv2.namedWindow(WINDOW_NAME, cv2.WINDOW_NORMAL | cv2.WINDOW_KEEPRATIO | cv2.WINDOW_GUI_NORMAL)
+        cv2.resizeWindow(WINDOW_NAME, args.width, args.height)
     panel = ControlPanel()
     resources.callback(panel.close)
 
+    def apply_fullscreen(enabled: bool) -> None:
+        # With its own window the video goes fullscreen there; otherwise the app window shows only the video.
+        if video_window:
+            set_fullscreen(enabled)
+        else:
+            panel.set_fullscreen(enabled)
+
     state = AppState(calibration_started=time.perf_counter(), fullscreen=args.fullscreen)
     if state.fullscreen:
-        set_fullscreen(True)
+        apply_fullscreen(True)
 
     background: np.ndarray | None = None
     real_background: np.ndarray | None = None  # Last real background: switching back needs no recalibration.
@@ -219,6 +246,7 @@ def run_camera(args: argparse.Namespace, resources: ExitStack, mode_name: str | 
     calibration_remaining = None
     last_gesture_report = float("-inf")
     message, message_until = "", float("-inf")
+    camera_detail, camera_detail_at = "", float("-inf")
     started = state.calibration_started
     width = height = 0
     if background_source is None:
@@ -257,8 +285,17 @@ def run_camera(args: argparse.Namespace, resources: ExitStack, mode_name: str | 
             effect = EffectRuntime(previous, segment, mic)
             notify(t("loop.mode_failed", name=name, error=error), time.perf_counter())
             return
-        user_data.save(Settings(name, chosen))
+        user_data.save(Settings(name, chosen, camera_name()))
         print(f"[{effect.mode.title}] {effect.mode.instructions}")
+
+    def switch_camera(index: int, now: float) -> None:
+        nonlocal camera_index
+        if index == camera_index and not camera.reconnecting:
+            return
+        camera_index = index
+        camera.reopen(open_capture)
+        user_data.save(Settings(effect.name, chosen, camera_name()))
+        notify(t("camera.switched", name=camera_name() or t("panel.camera_number", index=index)), now)
 
     def choose_background(path: Path | None, now: float) -> None:
         nonlocal chosen, background_source, background
@@ -280,10 +317,10 @@ def run_camera(args: argparse.Namespace, resources: ExitStack, mode_name: str | 
             state.phase = "running"
             background_samples.clear()
             effect.mode.reset()
-        user_data.save(Settings(effect.name, chosen))
+        user_data.save(Settings(effect.name, chosen, camera_name()))
 
     def handle(action: tuple, now: float) -> None:
-        nonlocal gallery
+        nonlocal gallery, cameras
         kind = action[0]
         running = state.phase == "running"
         if kind == "mode":
@@ -314,7 +351,15 @@ def run_camera(args: argparse.Namespace, resources: ExitStack, mode_name: str | 
             effect.mode.vanish(now)
         elif kind == "fullscreen":
             state.fullscreen = not state.fullscreen
-            set_fullscreen(state.fullscreen)
+            apply_fullscreen(state.fullscreen)
+        elif kind == "cameras":
+            cameras = list_cameras()
+        elif kind == "camera":
+            switch_camera(action[1], now)
+        elif kind == "reopen_camera":
+            camera.reopen()
+        elif kind == "camera_settings" and not camera.open_settings():
+            notify(t("camera.settings_unavailable"), now)
 
     card_base: np.ndarray | None = None  # Last image sent, dimmed: background of the reconnecting card.
     card: tuple[tuple[int, bool], np.ndarray] | None = None
@@ -330,15 +375,16 @@ def run_camera(args: argparse.Namespace, resources: ExitStack, mode_name: str | 
                 continue
             if frame is None:
                 if card_base is None:
-                    print(f"[VanishCam] {t('camera.lost')}")
+                    if not camera.opening:
+                        print(f"[VanishCam] {t('camera.lost')}")
                     card_base = dim_for_card(last_display, width or args.width, height or args.height)
                 lost = now - camera.lost_since
                 # Redrawn only when the seconds or the blinking lamp change.
                 seconds, lamp_on = int(lost), int(lost * 2) % 2 == 0
                 if card is None or card[0] != (seconds, lamp_on):
-                    card = (seconds, lamp_on), reconnecting_card(
-                        card_base, t("reconnect.title"), t("reconnect.detail", index=args.camera, seconds=seconds), lamp_on,
-                    )
+                    title = t("reconnect.opening_title" if camera.opening else "reconnect.title")
+                    detail = t("reconnect.detail", index=camera_index, seconds=seconds)
+                    card = (seconds, lamp_on), reconnecting_card(card_base, title, detail, lamp_on)
                 display = card[1]
             else:
                 if card_base is not None:
@@ -355,7 +401,7 @@ def run_camera(args: argparse.Namespace, resources: ExitStack, mode_name: str | 
                     # The webcam may not support the requested resolution: fit the
                     # window to the real one, without stretching the image.
                     print(f"[VanishCam] {t('camera.resolution', width=width, height=height)}")
-                    if (width, height) != (args.width, args.height):
+                    if video_window and (width, height) != (args.width, args.height):
                         cv2.resizeWindow(WINDOW_NAME, width, height)
                     virtual_camera = open_virtual_camera(args, width, height)
                     virtual_camera_initialized = True
@@ -426,16 +472,29 @@ def run_camera(args: argparse.Namespace, resources: ExitStack, mode_name: str | 
 
             if virtual_camera is not None:
                 send_virtual_frame(virtual_camera, display)
-            cv2.imshow(WINDOW_NAME, display)
-            status, status_color = panel_status(state.phase, mode, calibration_remaining, camera.reconnecting)
+            if video_window:
+                cv2.imshow(WINDOW_NAME, display)
+            if now - camera_detail_at >= 1.0 and camera.frame_size is not None:
+                # Once a second: a steadier number, and the panel is not redrawn every frame.
+                camera_detail_at = now
+                camera_detail = t("panel.camera_live", width=camera.frame_size[0], height=camera.frame_size[1],
+                                  fps=round(camera.fps or 0))
+            status, status_color = panel_status(state.phase, mode, calibration_remaining, camera.reconnecting,
+                                                camera.opening)
             panel.show(PanelView(
                 mode=effect.name, status=status, status_color=status_color, background=chosen,
                 gallery=gallery, manual_keys=mode.manual_keys, can_recapture=background_source is None,
                 fullscreen=state.fullscreen, message=message if now < message_until else "",
-            ))
+                cameras=cameras, camera_index=camera_index, camera_detail=camera_detail,
+                camera_state=("opening" if camera.opening else "reconnecting") if camera.reconnecting else "live",
+                can_adjust=platform.system() == "Windows",
+            ), display)
 
             key = cv2.waitKey(1) & 0xFF
-            if key in (ord("q"), 27) or panel.closed:
+            if key == 27 and state.fullscreen:
+                # Esc leaves fullscreen first, like everywhere else; Q still quits.
+                key = ord("f")
+            elif key in (ord("q"), 27) or panel.closed:
                 break
             actions = panel.poll()
             if key in KEY_ACTIONS:

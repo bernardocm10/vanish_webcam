@@ -29,7 +29,7 @@ python3 -m venv .venv
 .venv/bin/python -m vanishcam
 ```
 
-Two windows open: the video and the **VanishCam** control panel. Then:
+The **VanishCam** window opens: the control panel on the left, the live video beside it. Then:
 
 1. **Step out of the frame for 4 seconds** so the app can capture your room. Skipped if you pick a picture as the background.
 2. **Pick an effect and a background** in the panel.
