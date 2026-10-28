@@ -55,6 +55,7 @@ class FakePanel:
         self.fullscreen, self.detached = [], []
         self.last = None
         self.closed = False
+        self.capturing = None
 
     def show(self, view, video=None):
         # The video shown beside the panel: what the user sees. While no new frame comes the

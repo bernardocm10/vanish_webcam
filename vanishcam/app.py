@@ -24,14 +24,14 @@ from .camera import (
     reconnecting_card, restart_driver,
 )
 from .cli import parse_args
-from .control_panel import ACCENTS, AMBER, FONT_DIR, FONTS, GREEN, MODE_CARDS, ControlPanel, PanelView
+from .control_panel import ACCENTS, AMBER, FONT_DIR, FONTS, GREEN, MODE_CARDS, ControlPanel, PanelView, action_name
 from .detectors import AsyncRecognizer, detector_status
 from .effects.naruto import load_log
 from .i18n import t
 from .models import SEGMENTER_MODEL, download_models
 from .modes import MODES, FrameInfo, Mode
 from .segmentation import PersonSegmenter, create_segmenter
-from .shortcuts import ESCAPE_CODES
+from .shortcuts import ESCAPE_CODES, Shortcuts, normalize
 from .sound import VanishSound
 from .user_data import Settings, UserData
 from .virtual_camera import open_virtual_camera, send_virtual_frame
@@ -378,8 +378,25 @@ def run_camera(args: argparse.Namespace, resources: ExitStack, mode_name: str | 
             effect.mode.reset()
         save_settings()
 
+    def capture_key(key: int, now: float) -> None:
+        """The SETTINGS tab waits for a new key: this one is for it, not an action."""
+        nonlocal shortcuts
+        if key in ESCAPE_CODES:
+            panel.capturing = None
+            return
+        code = normalize(key)
+        if code is None:
+            return  # Shift, Alt, media keys: keep waiting for a usable key.
+        owner = shortcuts.owner(code, exclude=panel.capturing)
+        if owner is not None:
+            notify(t("panel.shortcut_taken", shortcut=Shortcuts.label(code), action=action_name(owner)), now)
+            return
+        shortcuts = shortcuts.rebind(panel.capturing, code)
+        panel.capturing = None
+        save_settings()
+
     def handle(action: tuple, now: float) -> None:
-        nonlocal gallery, cameras
+        nonlocal gallery, cameras, shortcuts
         kind = action[0]
         running = state.phase == "running"
         if kind == "mode":
@@ -423,6 +440,12 @@ def run_camera(args: argparse.Namespace, resources: ExitStack, mode_name: str | 
             set_detached(not detached)
         elif kind == "quit":
             state.quitting = True
+        elif kind == "shortcuts_enabled":
+            shortcuts = shortcuts.with_enabled(action[1])
+            save_settings()
+        elif kind == "reset_shortcuts":
+            shortcuts = shortcuts.reset()
+            save_settings()
 
     card_base: np.ndarray | None = None  # Last image sent, dimmed: background of the reconnecting card.
     card: tuple[tuple[int, bool], np.ndarray] | None = None
@@ -555,7 +578,7 @@ def run_camera(args: argparse.Namespace, resources: ExitStack, mode_name: str | 
                 fullscreen=state.fullscreen, message=message if now < message_until else "",
                 cameras=cameras, camera_index=camera_index, camera_detail=camera_detail,
                 camera_state=camera_state(camera),
-                can_adjust=platform.system() == "Windows", detached=detached,
+                can_adjust=platform.system() == "Windows", detached=detached, shortcuts=shortcuts,
             ), display)
 
             # The full code: masking it to 8 bits would turn other keys into letters (End into W).
@@ -566,7 +589,10 @@ def run_camera(args: argparse.Namespace, resources: ExitStack, mode_name: str | 
                 # Closing the video window brings the video back beside the panel; only the panel quits.
                 set_detached(False)
             actions = panel.poll()
-            if key in ESCAPE_CODES:
+            if panel.capturing is not None:
+                if key != -1:
+                    capture_key(key, now)
+            elif key in ESCAPE_CODES:
                 # ESC only leaves fullscreen, with or without shortcuts: there is no panel to click then.
                 if state.fullscreen:
                     actions.append(("fullscreen",))

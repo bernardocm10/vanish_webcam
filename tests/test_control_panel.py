@@ -435,6 +435,67 @@ class LiveSwitchTests(unittest.TestCase):
             self.assertEqual(app.create_segmenter.call_count, 1)
         return images, displayed, panel, user_data, recognizers
 
+    def run_with(self, actions=(), capture=None, shortcuts=TEST_SHORTCUTS):
+        """Panel actions one per frame from the second; capture=(action, keys) rebinds through the keyboard.
+
+        The window closes at the end (shortcuts may be off: Q would not quit).
+        """
+        pressed = list(capture[1]) if capture else []
+        frames = 4 + len(actions) + len(pressed)
+        script = [[] for _ in range(frames - 1)]
+        for index, action in enumerate(actions, start=1):
+            script[index].append(action)
+        keys = [0] * (frames - 1)
+        if capture:
+            start = 1 + len(actions)
+            script[start].append(lambda panel: setattr(panel, "capturing", capture[0]) or ("none",))
+            keys[start:start + len(pressed)] = pressed
+        script[frames - 2].append(lambda panel: setattr(panel, "closed", True) or ("none",))
+        _, _, self.panel, _, _ = self.run_app(
+            script, frames=frames, keys=keys, setup=lambda data: data.save(Settings(shortcuts=shortcuts)),
+        )
+        return self.saved
+
+    def test_turning_shortcuts_on_and_rebinding_is_saved(self):
+        saved = self.run_with(actions=[("shortcuts_enabled", True)], capture=("vanish", [ord("x")]),
+                              shortcuts=Shortcuts())
+        self.assertTrue(saved.shortcuts.enabled)
+        self.assertEqual(saved.shortcuts.key_for("vanish"), ord("x"))
+        self.assertIsNone(self.panel.capturing)
+
+    def test_restoring_the_defaults_is_saved(self):
+        saved = self.run_with(actions=[("reset_shortcuts",)], shortcuts=TEST_SHORTCUTS)
+        self.assertEqual(saved.shortcuts, Shortcuts().with_enabled(True))
+
+    def test_modifier_keys_are_ignored_while_capturing(self):
+        saved = self.run_with(capture=("vanish", [0xFFE1, 0xFFE9, ord("x")]), shortcuts=Shortcuts().with_enabled(True))
+        self.assertEqual(saved.shortcuts.key_for("vanish"), ord("x"))
+
+    def test_escape_cancels_a_capture(self):
+        saved = self.run_with(capture=("vanish", [0xFF1B, ord("x")]), shortcuts=Shortcuts().with_enabled(True))
+        self.assertEqual(saved.shortcuts.key_for("vanish"), ord("v"))
+        self.assertIsNone(self.panel.capturing)
+
+    def test_a_key_already_used_is_refused(self):
+        saved = self.run_with(capture=("vanish", [ord("r")]), shortcuts=Shortcuts().with_enabled(True))
+        self.assertEqual(saved.shortcuts.key_for("vanish"), ord("v"))
+        self.assertTrue(any(view.message.startswith(Shortcuts.label(ord("r"))) for view in self.panel.views))
+        self.assertEqual(self.panel.capturing, "vanish")  # Still waiting for a free key.
+
+    def test_captured_key_is_not_dispatched(self):
+        # D is free once detach has moved to X: binding fullscreen to D must not also detach the video.
+        start = Shortcuts().with_enabled(True).rebind("detach", ord("x"))
+        saved = self.run_with(capture=("fullscreen", [ord("d")]), shortcuts=start)
+        self.assertEqual(saved.shortcuts.key_for("fullscreen"), ord("d"))
+        self.assertEqual(self.panel.detached, [])
+        self.assertEqual(self.panel.fullscreen, [])
+
+    def test_switching_effect_keeps_the_shortcuts(self):
+        custom = Shortcuts().with_enabled(True).rebind("quit", ord("q")).rebind("vanish", ord("x"))
+        saved = self.run_with(actions=[("mode", "naruto")], shortcuts=custom)
+        self.assertEqual(saved.mode, "naruto")
+        self.assertEqual(saved.shortcuts, custom)
+
     def gallery_image(self, user_data, value=30):
         return write_image(user_data.backgrounds_dir / "praia.png", value)
 

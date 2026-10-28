@@ -194,7 +194,7 @@ STRINGS: dict[str, dict[str, str]] = {
         "panel.quit": "QUIT",
         "panel.press_key": "PRESS A KEY · ESC CANCELS",
         "panel.reset_shortcuts": "RESTORE DEFAULTS",
-        "panel.shortcut_taken": "{key} is already the shortcut for {action}",
+        "panel.shortcut_taken": "{shortcut} is already the shortcut for {action}",
         # Effects: panel title, panel hint and the instructions printed when selected.
         "mode.normal.title": "Normal",
         "mode.normal.hint": "V sign — dissolve",
@@ -346,7 +346,7 @@ STRINGS: dict[str, dict[str, str]] = {
         "panel.quit": "SAIR",
         "panel.press_key": "APERTE UMA TECLA · ESC CANCELA",
         "panel.reset_shortcuts": "RESTAURAR PADRÃO",
-        "panel.shortcut_taken": "{key} já é o atalho de {action}",
+        "panel.shortcut_taken": "{shortcut} já é o atalho de {action}",
         "mode.normal.title": "Normal",
         "mode.normal.hint": "sinal de V — dissolução",
         "mode.normal.instructions": "Faça um V com indicador e médio: você se dissolve.",
