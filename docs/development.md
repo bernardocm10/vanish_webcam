@@ -10,6 +10,8 @@ From the project folder:
 .venv/bin/python -m unittest
 ```
 
+GitHub Actions runs them on Windows and Linux for every push to `main` and every pull request (`.github/workflows/tests.yml`).
+
 To run the app from source: `.venv/bin/python -m vanishcam`.
 
 ## How the code is organized
