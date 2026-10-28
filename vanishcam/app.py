@@ -19,8 +19,8 @@ import numpy as np
 from .background import fit_background, load_background_image, replace_background, update_background
 from .call_audio import CallSound, VirtualMic, open_virtual_mic
 from .camera import (
-    CameraFeed, CameraInfo, device_instance_id, dim_for_card, list_cameras, open_camera, reconnecting_card,
-    restart_driver,
+    CameraFeed, CameraInfo, FrameReader, device_instance_id, dim_for_card, list_cameras, open_camera,
+    reconnecting_card, restart_driver,
 )
 from .cli import parse_args
 from .control_panel import ACCENTS, AMBER, FONT_DIR, FONTS, GREEN, MODE_CARDS, ControlPanel, PanelView
@@ -232,7 +232,8 @@ def run_camera(args: argparse.Namespace, resources: ExitStack, mode_name: str | 
         capture.set(cv2.CAP_PROP_FPS, args.fps)
         return capture
 
-    camera = CameraFeed(open_capture)
+    # Read in its own thread: a slow webcam never freezes the window.
+    camera = CameraFeed(open_capture, wrap=FrameReader)
     resources.callback(camera.release)
     segmenter = create_segmenter()
     resources.callback(segmenter.close)
@@ -423,11 +424,12 @@ def run_camera(args: argparse.Namespace, resources: ExitStack, mode_name: str | 
             frame = camera.read()
             now = time.perf_counter()
             mode = effect.mode
-            if frame is None and not camera.reconnecting:
-                # A dropped frame, or the first ones after opening: wait for the next one.
-                time.sleep(0.01)
-                continue
-            if frame is None:
+            # No new image yet (a slow webcam, a dropped frame, the first ones after opening):
+            # keep the window responsive, without redoing the video work or sending a frame twice.
+            waiting = frame is None and not camera.reconnecting
+            if waiting:
+                display = last_display
+            elif frame is None:
                 if card_base is None:
                     if not camera.opening:
                         print(f"[VanishCam] {t('camera.lost')}")
@@ -525,10 +527,11 @@ def run_camera(args: argparse.Namespace, resources: ExitStack, mode_name: str | 
 
                 last_display = display
 
-            if virtual_camera is not None:
-                send_virtual_frame(virtual_camera, display)
-            if detached:
-                cv2.imshow(WINDOW_NAME, display)
+            if not waiting:
+                if virtual_camera is not None:
+                    send_virtual_frame(virtual_camera, display)
+                if detached:
+                    cv2.imshow(WINDOW_NAME, display)
             if now - camera_detail_at >= 1.0 and camera.frame_size is not None:
                 # Once a second: a steadier number, and the panel is not redrawn every frame.
                 camera_detail_at = now
@@ -547,13 +550,13 @@ def run_camera(args: argparse.Namespace, resources: ExitStack, mode_name: str | 
                 can_adjust=platform.system() == "Windows", detached=detached,
             ), display)
 
-            key = cv2.waitKey(1) & 0xFF
+            key = cv2.waitKey(5 if waiting else 1) & 0xFF
             if key == 27 and state.fullscreen:
                 # Esc leaves fullscreen first, like everywhere else; Q still quits.
                 key = ord("f")
             elif key in (ord("q"), 27) or panel.closed:
                 break
-            if detached and not window_visible(WINDOW_NAME):
+            if detached and display is not None and not window_visible(WINDOW_NAME):
                 # Closing the video window brings the video back beside the panel; only the panel quits.
                 set_detached(False)
             actions = panel.poll()
@@ -561,6 +564,8 @@ def run_camera(args: argparse.Namespace, resources: ExitStack, mode_name: str | 
                 actions.append(KEY_ACTIONS[key])
             for action in actions:
                 handle(action, now)
+            if waiting:
+                continue
             if virtual_camera is not None:
                 virtual_camera.sleep_until_next_frame()
             elif frame is None:

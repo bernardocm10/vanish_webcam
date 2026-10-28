@@ -118,6 +118,59 @@ def restart_driver(instance_id: str) -> str | None:
     return t("camera.driver_exit", code=code)
 
 
+class FrameReader:
+    """Read the webcam in its own thread: a slow or stuck webcam must not freeze the window.
+
+    Wraps a cv2.VideoCapture. read() never waits: (True, frame) for an image not handed
+    out yet, (True, None) while the next one is on its way, (False, None) when the webcam
+    failed or has sent nothing for stall_seconds. Some webcams take a second per image in
+    the dark; reading them on the video thread would stall clicks and keys for as long.
+    """
+
+    def __init__(self, capture: cv2.VideoCapture, stall_seconds: float = 2.0):
+        self.capture = capture
+        self.stall_seconds = stall_seconds
+        self.lock = threading.Lock()
+        self.latest: np.ndarray | None = None
+        self.failed = False
+        self.last_frame_at = time.monotonic()
+        self.stopping = threading.Event()
+        self.thread = threading.Thread(target=self._run, name="camera-read", daemon=True)
+        self.thread.start()
+
+    def _run(self) -> None:
+        try:
+            while not self.stopping.is_set():
+                ok, frame = self.capture.read()
+                with self.lock:
+                    if ok and frame is not None:
+                        self.latest, self.failed = frame, False
+                        self.last_frame_at = time.monotonic()
+                    else:
+                        self.failed = True
+                if not ok:
+                    self.stopping.wait(0.01)  # A failing webcam answers at once: do not spin.
+        finally:
+            # Only this thread touches the capture, so it is released after its last read.
+            self.capture.release()
+
+    def read(self) -> tuple[bool, np.ndarray | None]:
+        with self.lock:
+            frame, self.latest = self.latest, None
+            if frame is not None:
+                return True, frame
+            stalled = time.monotonic() - self.last_frame_at > self.stall_seconds
+            return not (self.failed or stalled), None
+
+    def set(self, prop: int, value: float) -> bool:
+        return self.capture.set(prop, value)
+
+    def release(self, wait: float = 1.0) -> None:
+        """Stop reading; waits a little so the webcam is free before it is opened again."""
+        self.stopping.set()
+        self.thread.join(timeout=wait)
+
+
 class CameraReopener:
     """Reopen the webcam in a thread: opening can block for seconds, the video must not."""
 
@@ -179,17 +232,21 @@ class CameraReopener:
 class CameraFeed:
     """The webcam, reopened in the background when it stops sending images (unplugged, taken by another app).
 
-    read() returns None instead of failing: first for a short grace period (a single
-    dropped frame is common), then while CameraReopener retries. The first open stays
-    synchronous, so a missing webcam at startup is still reported as an error.
+    read() returns None instead of failing: when no new image is ready, for a short grace
+    period after a failed read (a single dropped frame is common), then while
+    CameraReopener retries. The first open stays synchronous, so a missing webcam at
+    startup is still reported as an error. wrap (FrameReader in the app) is applied to
+    every capture once it has sent its first image.
     """
 
     def __init__(self, open_capture: Callable[[], cv2.VideoCapture],
-                 lost_after: float = CAMERA_LOST_SECONDS, retry_seconds: float = CAMERA_RETRY_SECONDS):
+                 lost_after: float = CAMERA_LOST_SECONDS, retry_seconds: float = CAMERA_RETRY_SECONDS,
+                 wrap: Callable[[cv2.VideoCapture], cv2.VideoCapture] | None = None):
         self.open_capture = open_capture
         self.lost_after = lost_after
         self.retry_seconds = retry_seconds
-        self.capture = open_capture()
+        self.wrap = wrap or (lambda capture: capture)
+        self.capture = self.wrap(open_capture())
         self.failing_since: float | None = None
         self.lost_since: float | None = None
         self.reopener: CameraReopener | None = None
@@ -213,16 +270,18 @@ class CameraFeed:
             reopened = self.reopener.take()
             if reopened is None:
                 return None
-            self.capture, frame = reopened
+            capture, frame = reopened
+            self.capture = self.wrap(capture)
             self.reopener = None
             self.lost_since = None
             self.opening = False
             self.fps = self.last_frame_at = None
             return self._delivered(frame)
         ok, frame = self.capture.read()
-        if ok and frame is not None:
+        if ok:
+            # Alive; without a frame it is just not ready yet (FrameReader).
             self.failing_since = None
-            return self._delivered(frame)
+            return self._delivered(frame) if frame is not None else None
         now = time.perf_counter()
         if self.failing_since is None:
             self.failing_since = now

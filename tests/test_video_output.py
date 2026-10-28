@@ -51,12 +51,16 @@ class FakePanel:
         self.actions = list(actions)
         self.views, self.frames, self.real_backgrounds = [], [], []
         self.fullscreen, self.detached = [], []
+        self.last = None
         self.closed = False
 
     def show(self, view, video=None):
-        # The video shown beside the panel: what the user sees.
+        # The video shown beside the panel: what the user sees. While no new frame comes the
+        # app shows the same one again, like ControlPanel nothing new is drawn then.
         self.views.append(view)
-        self.frames.append(video.copy())
+        if video is not None and (not self.frames or video is not self.last):
+            self.frames.append(video.copy())
+        self.last = video
 
     def set_fullscreen(self, enabled):
         self.fullscreen.append(enabled)
@@ -84,6 +88,8 @@ def app_mocks(mocks, segmenter, recognizer, actions=(), cameras=()):
     mocks.enter_context(patch.object(app, "ControlPanel", return_value=panel))
     # No real webcam listing in tests: the camera number from the arguments is used.
     mocks.enter_context(patch.object(app, "list_cameras", return_value=cameras))
+    # Frames read on the video thread, in order: the scripted captures stay deterministic.
+    mocks.enter_context(patch.object(app, "FrameReader", lambda capture: capture))
     folder = mocks.enter_context(tempfile.TemporaryDirectory())
     user_data = app.UserData(Path(folder))
     mocks.enter_context(patch.object(app.UserData, "default", return_value=user_data))

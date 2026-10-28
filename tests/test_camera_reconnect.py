@@ -1,4 +1,6 @@
+import queue
 import threading
+import time
 import unittest
 from contextlib import ExitStack
 from types import SimpleNamespace
@@ -11,7 +13,8 @@ from vanishcam import camera as camera_module
 from vanishcam import detectors, segmentation
 from vanishcam.app import choose_camera
 from vanishcam.camera import (
-    CameraFeed, CameraInfo, device_instance_id, dim_for_card, list_cameras, reconnecting_card, restart_driver,
+    CameraFeed, CameraInfo, FrameReader, device_instance_id, dim_for_card, list_cameras, reconnecting_card,
+    restart_driver,
 )
 from vanishcam.i18n import t
 from .test_video_output import InlineRecognizer, app_mocks, arguments
@@ -149,6 +152,75 @@ class CameraFeedTests(unittest.TestCase):
         capture.set.assert_called_once_with(camera_module.cv2.CAP_PROP_SETTINGS, 1)
         with patch.object(camera_module.platform, "system", return_value="Linux"):
             self.assertFalse(feed.open_settings())
+
+
+class FrameReaderTests(unittest.TestCase):
+    def capture(self, reads):
+        """A capture whose reads come from a queue; it blocks like a slow webcam until fed."""
+        feed = queue.Queue()
+        capture = Mock()
+        capture.read.side_effect = lambda: feed.get(timeout=2.0)
+        for read in reads:
+            feed.put(read)
+        return capture, feed
+
+    def wait_for(self, reader, expected):
+        for _ in range(200):
+            result = reader.read()
+            if result[0] == expected[0] and (result[1] is None) == (expected[1] is None):
+                return result
+            time.sleep(0.005)
+        self.fail(f"never read {expected}")
+
+    def test_each_frame_once_and_waiting_is_not_a_failure(self):
+        frame = np.zeros((HEIGHT, WIDTH, 3), np.uint8)
+        capture, feed = self.capture([(True, frame)])
+        reader = FrameReader(capture)
+        self.assertIs(self.wait_for(reader, (True, frame))[1], frame)
+        # The next image is still on its way (the read blocks): alive, nothing new.
+        self.assertEqual(reader.read(), (True, None))
+        feed.put((False, None))
+        self.wait_for(reader, (False, None))
+        feed.put((True, frame))
+        reader.release()
+        capture.release.assert_called_once()  # By the reading thread, after its last read.
+
+    def test_a_webcam_that_stops_answering_counts_as_failed(self):
+        capture, feed = self.capture([])
+        reader = FrameReader(capture, stall_seconds=0.05)
+        self.assertEqual(reader.read(), (True, None))
+        time.sleep(0.1)
+        self.assertEqual(reader.read(), (False, None))
+        feed.put((False, None))
+        reader.release()
+
+    def test_feed_waits_without_counting_failures(self):
+        frame = np.zeros((HEIGHT, WIDTH, 3), np.uint8)
+        capture = Mock()
+        capture.read.side_effect = [(True, frame)] + [(True, None)] * 50
+        feed = CameraFeed(Mock(return_value=capture), lost_after=0.0)
+        self.assertIs(feed.read(), frame)
+        for _ in range(50):
+            self.assertIsNone(feed.read())
+        self.assertFalse(feed.reconnecting)
+        capture.release.assert_not_called()
+
+    def test_feed_wraps_every_capture_after_its_first_image(self):
+        frame = np.zeros((HEIGHT, WIDTH, 3), np.uint8)
+        first, second = Mock(), Mock()
+        second.read.return_value = (True, frame)
+        wrapped = []
+
+        def wrap(capture):
+            wrapped.append(capture)
+            return capture
+
+        feed = CameraFeed(Mock(return_value=first), wrap=wrap)
+        feed.reopen(Mock(return_value=second))
+        feed.reopener.thread.join(timeout=2.0)
+        feed.read()
+        self.assertEqual(wrapped, [first, second])
+        feed.release()
 
 
 class DriverRestartTests(unittest.TestCase):

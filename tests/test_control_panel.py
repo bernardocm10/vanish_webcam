@@ -199,6 +199,16 @@ class ControlPanelWindowTests(unittest.TestCase):
         self.panel.show(PanelView("goku", "Pronto"), self.video)
         self.assertEqual(self.render.call_count, 2)
 
+    def test_nothing_is_drawn_again_without_a_new_frame_or_a_change(self):
+        view = PanelView("normal", "Pronto")
+        self.panel.show(view, self.video)
+        self.panel.show(view, self.video)  # First frame: the window's starting size.
+        shown = self.imshow.call_count
+        self.panel.show(view, self.video)  # Same frame (a slow webcam), same panel.
+        self.assertEqual(self.imshow.call_count, shown)
+        self.panel.show(view, self.video.copy())  # A new frame.
+        self.assertEqual(self.imshow.call_count, shown + 1)
+
     def test_one_window_with_the_panel_beside_the_video(self):
         view = PanelView("normal", "Pronto")
         self.panel.show(view, self.video)

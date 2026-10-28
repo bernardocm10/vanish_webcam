@@ -50,6 +50,8 @@ prototypes/         experiments that are not part of the app
 A few things worth knowing:
 
 - **Gesture detection runs in a background thread** (`AsyncRecognizer`), so the video never waits for the models.
+- **The webcam is read in a background thread** (`FrameReader`), so a slow or stuck webcam never freezes the window: while no new image comes, the loop keeps answering clicks and keys without redoing any video work.
+- **The window image is reused** (`ControlPanel.show`): the panel is copied in only when it changes and the video only when a new frame comes.
 - **Switching effect replaces only `EffectRuntime`:** the recognizer, the sound, and the `Mode`. The camera, segmentation, virtual devices, and background stay open.
 - **Each `Mode` is a small state machine:** it turns detection results into phases (`ready`, `vanishing`, `vanished`, and `appearing` for Goku) and draws each frame.
 

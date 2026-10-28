@@ -190,18 +190,26 @@ def panel_height(view: PanelView) -> int:
     return layout(view).height
 
 
+def place(image: np.ndarray, canvas: np.ndarray, area: tuple[int, int, int, int]) -> None:
+    """Draw the whole image into area (x, y, width, height) of canvas, as large as fits, centered.
+
+    Linear scaling: a preview only, and several times cheaper than INTER_AREA at 1080p.
+    """
+    x, y, width, height = area
+    if image is None or width < 2 or height < 2:
+        return
+    source_height, source_width = image.shape[:2]
+    scale = min(width / source_width, height / source_height)
+    size = (max(1, round(source_width * scale)), max(1, round(source_height * scale)))
+    x, y = x + (width - size[0]) // 2, y + (height - size[1]) // 2
+    canvas[y : y + size[1], x : x + size[0]] = cv2.resize(image, size, interpolation=cv2.INTER_LINEAR)
+
+
 def fit_into(image: np.ndarray, width: int, height: int) -> np.ndarray:
     """The whole image, as large as fits, centered on the stage color."""
     stage = np.empty((height, width, 3), np.uint8)
     stage[:] = STAGE
-    if image is None or width < 2 or height < 2:
-        return stage
-    source_height, source_width = image.shape[:2]
-    scale = min(width / source_width, height / source_height)
-    size = (max(1, round(source_width * scale)), max(1, round(source_height * scale)))
-    interpolation = cv2.INTER_AREA if scale < 1 else cv2.INTER_LINEAR
-    x, y = (width - size[0]) // 2, (height - size[1]) // 2
-    stage[y : y + size[1], x : x + size[0]] = cv2.resize(image, size, interpolation=interpolation)
+    place(image, stage, (0, 0, width, height))
     return stage
 
 
@@ -520,6 +528,11 @@ class ControlPanel:
         self.drawn = None
         self.panel: np.ndarray | None = None
         self.size: tuple[int, int] | None = None
+        # The window image is kept and only its changed parts redrawn: the panel when it
+        # changes, the video when a new frame comes. Rebuilt when the layout changes.
+        self.canvas: np.ndarray | None = None
+        self.layout = None
+        self.video: np.ndarray | None = None
         # NORMAL + FREERATIO: the window can be resized and maximized; each frame is drawn
         # at the window's own size, so nothing is stretched and clicks map 1:1.
         # GUI_NORMAL: without the Qt toolbar and zoom.
@@ -566,27 +579,44 @@ class ControlPanel:
 
     def show(self, view: PanelView, video: np.ndarray | None = None) -> None:
         # The panel is redrawn only when something changes: the view, the item under the
-        # mouse, a thumbnail, the open menu. The video beside it changes every frame.
+        # mouse, a thumbnail, the open menu. The video beside it, when a new frame comes.
         over = hit(self.regions, *self.hover) if self.hover else None
         key = (view, over.box if over else None, self.renderer.version, self.menu)
-        if key != self.drawn:
+        panel_changed = key != self.drawn
+        if panel_changed:
             self.panel, self.regions = self.renderer.render(view, self.hover, self.menu)
             self.drawn = key
         panel = self.panel
         width, height = self._window_size(panel.shape[0])
-        if self.fullscreen:
-            canvas = fit_into(video, width, height)
-            if time.monotonic() - self.fullscreen_since < FULLSCREEN_HINT_SECONDS:
-                # Only on this window: the virtual camera never shows it.
-                cv2.putText(canvas, t("panel.fullscreen_hint"), (24, height - 24),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.6, (230, 230, 230), 1, cv2.LINE_AA)
+        hinting = self.fullscreen and time.monotonic() - self.fullscreen_since < FULLSCREEN_HINT_SECONDS
+        layout = ((width, height), self.fullscreen, self.detached, hinting,
+                  None if video is None else video.shape, panel.shape)
+        if layout == self.layout and not panel_changed and video is self.video:
+            return  # Nothing new: no frame since the last call (a slow webcam), no hover.
+        if layout != self.layout:
+            self.canvas = np.empty((height, width, 3), np.uint8)
+            self.canvas[:] = FACE[::-1] if self.detached and not self.fullscreen else STAGE
+            self.layout = layout
+            panel_changed = video_changed = True
         else:
-            canvas = np.empty((height, width, 3), np.uint8)
-            columns, rows = min(width, WIDTH), min(height, panel.shape[0])
-            canvas[:, :columns] = FACE[::-1]  # Below the panel, when the window is taller.
-            canvas[:rows, :columns] = panel[:rows, :columns]
-            if width > WIDTH:
-                canvas[:, WIDTH:] = FACE[::-1] if self.detached else fit_into(video, width - WIDTH, height)
+            video_changed = video is not self.video
+        canvas = self.canvas
+        if self.fullscreen:
+            area = (0, 0, width, height)
+        else:
+            area = None if self.detached or width <= WIDTH else (WIDTH, 0, width - WIDTH, height)
+            if panel_changed:
+                columns, rows = min(width, WIDTH), min(height, panel.shape[0])
+                canvas[:, :columns] = FACE[::-1]  # Below the panel, when the window is taller.
+                canvas[:rows, :columns] = panel[:rows, :columns]
+        if area is not None and video_changed:
+            place(video, canvas, area)
+        self.video = video
+        if hinting:
+            # Only on this window, never in the virtual camera; drawn on a copy so it goes away.
+            canvas = canvas.copy()
+            cv2.putText(canvas, t("panel.fullscreen_hint"), (24, height - 24),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.6, (230, 230, 230), 1, cv2.LINE_AA)
         cv2.imshow(self.title, canvas)
 
     def poll(self) -> list[tuple]:
