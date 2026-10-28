@@ -10,7 +10,7 @@ The panel is styled like a broadcast control surface: a light faceplate, black i
 
 It follows your system language (see [Language](configuration.md#language)). This guide uses the English labels, with the Portuguese ones in parentheses.
 
-The panel has two tabs in its black top bar: **LIVE** (*AO VIVO*), where the app opens, with everything below, and **SETTINGS** (*AJUSTES*), with the [keyboard shortcuts](#keyboard-shortcuts). The screenshot shows the panel before the tabs were added.
+The panel has three tabs in its black top bar: **LIVE** (*AO VIVO*), where the app opens, with everything below; **MEMES**, with the [meme reactions](memes.md); and **SETTINGS** (*AJUSTES*), with the [keyboard shortcuts](#keyboard-shortcuts). The screenshot shows the panel before the tabs were added.
 
 ## What is on the panel
 
@@ -86,11 +86,11 @@ Vanish and reappear do nothing in Goku mode: only the gesture counts there.
 
 ## Saved preferences
 
-The app remembers the last effect, background, webcam, and your keyboard shortcuts, and starts with them next time. The webcam is remembered by name, so it is found again even if its number changes. `--mode`, `--background-image`, and `--camera` override them for one launch.
+The app remembers the last effect, background, webcam, your keyboard shortcuts, and your memes, and starts with them next time. The webcam is remembered by name, so it is found again even if its number changes. `--mode`, `--background-image`, and `--camera` override them for one launch.
 
 | System | Folder |
 | --- | --- |
 | Linux | `~/.config/vanishcam/` |
 | Windows | `%APPDATA%\VanishCam\` |
 
-The folder holds `settings.json` and a `backgrounds/` folder with the copies of your gallery pictures. Delete it to start fresh.
+The folder holds `settings.json`, a `backgrounds/` folder with the copies of your gallery pictures, and a `memes/` folder with the copies of your meme pictures. Delete it to start fresh.

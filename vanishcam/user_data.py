@@ -17,6 +17,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from .i18n import t
+from .memes import Memes
 from .shortcuts import Shortcuts
 
 IMAGE_SUFFIXES = (".jpg", ".jpeg", ".png", ".bmp", ".webp")
@@ -40,6 +41,7 @@ class Settings:
     camera: str | None = None  # By name: the numbers shift when a webcam is unplugged.
     detached: bool = False  # The video in its own window.
     shortcuts: Shortcuts = field(default_factory=Shortcuts)
+    memes: Memes = field(default_factory=Memes)
 
 
 class UserData:
@@ -47,6 +49,7 @@ class UserData:
         self.root = Path(root)
         self.settings_file = self.root / "settings.json"
         self.backgrounds_dir = self.root / "backgrounds"
+        self.memes_dir = self.root / "memes"
 
     @classmethod
     def default(cls) -> "UserData":
@@ -67,7 +70,8 @@ class UserData:
         camera = data.get("camera") if isinstance(data.get("camera"), str) else None
         detached = data.get("detached") is True
         shortcuts = Shortcuts.from_json(data.get("shortcuts"))
-        return Settings(mode, Path(background) if background else None, camera, detached, shortcuts)
+        memes = Memes.from_json(data.get("memes"), self.root)
+        return Settings(mode, Path(background) if background else None, camera, detached, shortcuts, memes)
 
     def save(self, settings: Settings) -> None:
         data = {
@@ -76,6 +80,7 @@ class UserData:
             "camera": settings.camera,
             "detached": settings.detached,
             "shortcuts": settings.shortcuts.to_json(),
+            "memes": settings.memes.to_json(self.root),
         }
         try:
             self.root.mkdir(parents=True, exist_ok=True)
@@ -109,6 +114,19 @@ class UserData:
         shutil.copyfile(source, target)
         for old in self.gallery()[MAX_GALLERY:]:
             old.unlink(missing_ok=True)
+        return target
+
+    def import_meme(self, gesture: str, source: Path) -> Path:
+        """Copy a gesture's picture into memes/, replacing the one it had."""
+        source = Path(source)
+        if source.suffix.lower() not in IMAGE_SUFFIXES:
+            raise ValueError(t("gallery.unsupported", name=source.name))
+        self.memes_dir.mkdir(parents=True, exist_ok=True)
+        target = self.memes_dir / f"{gesture}-{time.time_ns()}{source.suffix.lower()}"
+        shutil.copyfile(source, target)
+        for old in self.memes_dir.glob(f"{gesture}-*"):
+            if old != target:
+                old.unlink(missing_ok=True)
         return target
 
     def remove_image(self, path: Path) -> None:

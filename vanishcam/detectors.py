@@ -16,7 +16,9 @@ from .effects.ash import hands_up_pose, hands_up_reference
 from .effects.goku import face_reference, forehead_fingers_pose
 from .effects.naruto import hand_seal_from_landmarks
 from .effects.particles import salute_pose, salute_reference
+from .hand_geometry import face_box
 from .i18n import t
+from .meme_poses import match_gesture
 from .models import FACE_MODEL, GESTURE_MODEL, HAND_MODEL
 
 GESTURE_INTERVAL_SECONDS = 0.14
@@ -54,6 +56,32 @@ def create_pose_detector(detector: type[GokuPoseDetector]) -> GokuPoseDetector:
         face.close()
         raise
     return detector(face, hands)
+
+
+def create_meme_detector() -> MemePoseDetector:
+    """Face and hands for the meme gestures, with the prototype's confidences."""
+    require_models(HAND_MODEL, FACE_MODEL)
+    face = vision.FaceLandmarker.create_from_options(vision.FaceLandmarkerOptions(
+        base_options=python.BaseOptions(model_asset_path=str(FACE_MODEL)),
+        running_mode=vision.RunningMode.VIDEO,
+        num_faces=1,
+        min_face_detection_confidence=0.45,
+        min_face_presence_confidence=0.45,
+        min_tracking_confidence=0.45,
+    ))
+    try:
+        hands = vision.HandLandmarker.create_from_options(vision.HandLandmarkerOptions(
+            base_options=python.BaseOptions(model_asset_path=str(HAND_MODEL)),
+            running_mode=vision.RunningMode.VIDEO,
+            num_hands=2,
+            min_hand_detection_confidence=0.45,
+            min_hand_presence_confidence=0.45,
+            min_tracking_confidence=0.45,
+        ))
+    except Exception:
+        face.close()
+        raise
+    return MemePoseDetector(face, hands)
 
 
 def create_hand_landmarker() -> MultiViewHandLandmarker:
@@ -362,6 +390,36 @@ class SalutePoseDetector(GokuPoseDetector):
 
     reference = staticmethod(salute_reference)
     pose = staticmethod(salute_pose)
+
+
+class MemePoseDetector:
+    """The meme gesture the hands make, among the enabled ones, against the face seen lately."""
+
+    FACE_MEMORY_MS = 1200
+
+    def __init__(self, face, hands):
+        self.face = face
+        self.hands = hands
+        # Set by the video loop before each frame: only these gestures are checked.
+        self.enabled: frozenset[str] = frozenset()
+        self.last_face = None
+        self.last_face_ms = -self.FACE_MEMORY_MS
+
+    def recognize(self, image: mp.Image, timestamp_ms: int) -> str | None:
+        faces = self.face.detect_for_video(image, timestamp_ms)
+        if faces.face_landmarks:
+            self.last_face = face_box(faces.face_landmarks[0])
+            self.last_face_ms = timestamp_ms
+        elif timestamp_ms - self.last_face_ms > self.FACE_MEMORY_MS:
+            self.last_face = None
+        result = self.hands.detect_for_video(image, timestamp_ms)
+        return match_gesture(result.hand_landmarks, self.last_face, self.enabled)
+
+    def close(self) -> None:
+        try:
+            self.face.close()
+        finally:
+            self.hands.close()
 
 
 class AsyncRecognizer:

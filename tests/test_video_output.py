@@ -8,11 +8,13 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
+import cv2
 import numpy as np
 
 from vanishcam import app
 from vanishcam import detectors, segmentation
 from vanishcam.segmentation import PersonSegmenter
+from vanishcam.memes import Memes
 from vanishcam.shortcuts import Shortcuts
 from vanishcam.user_data import Settings
 
@@ -91,6 +93,8 @@ def app_mocks(mocks, segmenter, recognizer, actions=(), cameras=(), shortcuts=TE
     """Fake models, a fake panel and preferences in a temporary folder."""
     mocks.enter_context(patch.object(app, "create_segmenter", return_value=segmenter))
     mocks.enter_context(patch.object(app, "create_recognizer", return_value=recognizer))
+    # No real face and hand models for the memes either: a detector that never sees a gesture.
+    mocks.enter_context(patch.object(app, "create_meme_detector", return_value=Mock(**{"recognize.return_value": None})))
     panel = FakePanel(actions)
     mocks.enter_context(patch.object(app, "ControlPanel", return_value=panel))
     # No real webcam listing in tests: the camera number from the arguments is used.
@@ -370,6 +374,106 @@ class ShortcutKeysTests(unittest.TestCase):
             with self.subTest(escape):
                 panel = self.run_keys([0, escape, 0], Shortcuts(), fullscreen=True)
                 self.assertEqual(panel.fullscreen[-1], False)
+
+
+
+class MemeLoopTests(unittest.TestCase):
+    STEP = 0.125  # Exact in binary: every frame is one meme detection interval or more apart.
+
+    def setUp(self):
+        folder = Path(self.enterContext(tempfile.TemporaryDirectory()))
+        self.white_png = folder / "white.png"
+        cv2.imwrite(str(self.white_png), np.full((2, 2, 3), 255, np.uint8))
+
+    def run_memes(self, memes, results, mode="normal", keys=None, actions=()):
+        """The app on a picture background; the meme detector answers results, one per detection."""
+        frames = len(results) + 1
+        capture = Mock()
+        images = [np.full((24, 40, 3), 100, np.uint8) for _ in range(frames)]
+        read, clock = video_clock(images, [self.STEP * index for index in range(frames)])
+        capture.read.side_effect = read
+        answers = list(results)
+        detector = Mock()
+        def recognize(image, timestamp_ms):
+            answer = answers.pop(0) if answers else None
+            if isinstance(answer, Exception):
+                raise answer
+            return answer
+
+        detector.recognize.side_effect = recognize
+        recognizer = Mock()
+        recognizer.recognize_joined_hands.return_value = False
+        camera = Mock(width=40, height=24)
+        keys = list(keys or [0] * (frames - 1)) + [ord("q")]
+        with ExitStack() as mocks:
+            args = arguments(background_image="beach.png", mode=mode)
+            mocks.enter_context(patch.object(app, "parse_args", return_value=args))
+            mocks.enter_context(patch.object(app, "download_models"))
+            mocks.enter_context(patch.object(app, "open_camera", return_value=capture))
+            panel, user_data = app_mocks(mocks, Mock(), recognizer, actions)
+            user_data.save(Settings(shortcuts=TEST_SHORTCUTS, memes=memes))
+            mocks.enter_context(patch.object(app, "open_virtual_camera", return_value=camera))
+            mocks.enter_context(patch.object(
+                app, "load_background_image", return_value=np.full((48, 80, 3), 30, np.uint8),
+            ))
+            mocks.enter_context(patch.object(app, "VanishSound", return_value=Mock()))
+            mask = np.zeros((24, 40), np.float32)
+            mask[:, 10:30] = 1.0  # Person in the middle.
+            mocks.enter_context(patch.object(segmentation, "person_mask", return_value=mask))
+            mocks.enter_context(patch.object(detectors, "recognize_gesture", return_value=("No_Hand", 0.0)))
+            mocks.enter_context(patch.object(app, "AsyncRecognizer", InlineRecognizer))
+            self.creating = mocks.enter_context(patch.object(app, "create_meme_detector", return_value=detector))
+            mocks.enter_context(patch.object(app.time, "perf_counter", side_effect=clock))
+            for name in ("namedWindow", "resizeWindow", "destroyAllWindows"):
+                mocks.enter_context(patch.object(app.cv2, name))
+            mocks.enter_context(patch.object(app.cv2, "waitKeyEx", side_effect=keys))
+            mocks.enter_context(patch("builtins.print"))
+            self.assertEqual(app.run(), 0)
+        self.detector = detector
+        return panel.frames, [call.args[0] for call in camera.send.call_args_list]
+
+    def test_meme_pops_over_the_video_and_the_call(self):
+        # Held from the first detection: fired at the third, 0.25 s later; still on at the end.
+        memes = Memes().with_gesture("thumbs_up", image=self.white_png, on=True)
+        frames, sent = self.run_memes(memes, results=["thumbs_up"] * 6 + [None] * 4)
+        self.assertTrue((frames[0][12, 20] == 100).all())  # Before: the person.
+        self.assertTrue((frames[-1][12, 20] == 255).all())  # The white picture in the middle.
+        self.assertTrue((frames[-1][2, 2] != 255).all())  # Only in the middle.
+        np.testing.assert_array_equal(sent[-1], frames[-1])  # The call gets the same picture.
+
+    def test_no_detector_while_nothing_is_enabled(self):
+        self.run_memes(Memes(), results=[None] * 4)
+        self.creating.assert_not_called()
+        self.run_memes(Memes().with_gesture("calm", image=self.white_png, on=True).with_enabled(False), [None] * 4)
+        self.creating.assert_not_called()
+
+    def test_master_off_clears_and_stops_detection(self):
+        memes = Memes().with_gesture("thumbs_up", image=self.white_png, on=True)
+        actions = [[]] * 8 + [[("memes_enabled", False)]]
+        _, sent = self.run_memes(memes, results=["thumbs_up"] * 6 + [None] * 6, actions=actions)
+        self.assertTrue((sent[7][12, 20] == 255).all())  # On screen...
+        self.assertTrue((sent[-1][12, 20] == 100).all())  # ...gone right after the switch.
+        self.assertEqual(self.detector.close.call_count, 1)  # Closed then, not again on exit.
+        self.assertEqual(self.detector.recognize.call_count, 9)  # No detection after it.
+
+    def test_a_detection_error_turns_memes_off_but_not_the_app(self):
+        memes = Memes().with_gesture("thumbs_up", image=self.white_png, on=True)
+        _, sent = self.run_memes(memes, results=[RuntimeError("model crashed")] + [None] * 5)
+        self.assertEqual(len(sent), 7)  # Every frame still went to the call.
+        self.assertEqual(self.detector.close.call_count, 1)
+        self.assertEqual(self.detector.recognize.call_count, 1)  # No more detections after the error.
+
+    def test_meme_never_changes_the_effect_frame(self):
+        # Naruto vanishes with V at the second frame and keeps its frozen frame; a meme pops up
+        # from 3 s and is gone by 6.5 s: the frame after it is the frame before it.
+        memes = Memes().with_gesture("thumbs_up", image=self.white_png, on=True)
+        results = [None] * 24 + ["thumbs_up"] * 4 + [None] * 32
+        keys = [0, ord("v")] + [0] * (len(results) - 2)
+        _, sent = self.run_memes(memes, results, mode="naruto", keys=keys)  # Sent: one per frame.
+        before, during, after = sent[22], sent[36], sent[-1]
+        self.assertFalse((during == before).all())  # The meme was on screen...
+        np.testing.assert_array_equal(after, before)  # ...and left nothing behind.
+        self.assertEqual(self.detector.close.call_count, 1)  # Closed on exit.
 
 
 if __name__ == "__main__":

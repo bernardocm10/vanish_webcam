@@ -20,6 +20,8 @@ import numpy as np
 from PIL import Image, ImageDraw, ImageFont, ImageOps
 
 from .i18n import t
+from .meme_poses import GESTURES
+from .memes import CONFLICTS, Memes
 from .modes import MODES
 from .shortcuts import ACTIONS, Shortcuts
 from .paths import FONT_DIR
@@ -44,7 +46,9 @@ FOOTER = 34
 # Initial room for the video beside the panel; the window can then be resized freely.
 VIDEO_WIDTH = 960
 FULLSCREEN_HINT_SECONDS = 4.0
-TABS = ("live", "settings")
+TABS = ("live", "memes", "settings")
+MEME_ROW = 44  # Each gesture on the MEMES tab.
+MEME_THUMB = (52, 36)
 SHORTCUT_ROW = 28  # Each action on the SETTINGS tab.
 
 # Broadcast control surface: light faceplate, black ink, a single signal color.
@@ -104,6 +108,7 @@ class PanelView:
     can_adjust: bool = False
     detached: bool = False  # The video in its own window instead of beside the panel.
     shortcuts: Shortcuts = Shortcuts()
+    memes: Memes = Memes()
 
     @property
     def camera_name(self) -> str:
@@ -410,6 +415,9 @@ class PanelRenderer:
         if tab == "settings":
             self._settings(view, spots, capturing, text, rect, line, fit, hovered, clickable, section, key)
             return self._finish(canvas, height, regions)
+        if tab == "memes":
+            self._memes(view, spots, canvas, text, rect, line, fit, hovered, clickable, section, hatch)
+            return self._finish(canvas, height, regions)
 
         # A · Effect: the active one; the others in its menu.
         y = spots.effect
@@ -555,6 +563,70 @@ class PanelRenderer:
         small = canvas.resize((WIDTH, height), Image.Resampling.BOX)
         return cv2.cvtColor(np.asarray(small), cv2.COLOR_RGB2BGR), regions
 
+    def meme_thumb(self, path: Path) -> Image.Image | None:
+        """The gesture's picture, whole, inside the row's thumbnail."""
+        key = ("meme", path)
+        if key not in self.thumbs:
+            size = (MEME_THUMB[0] * SCALE, MEME_THUMB[1] * SCALE)
+            try:
+                with Image.open(path) as image:
+                    upright = ImageOps.exif_transpose(image)  # As the meme will show in the call.
+                    picture = ImageOps.contain(upright.convert("RGBA"), size, Image.Resampling.LANCZOS)
+                tile = Image.new("RGB", size, KEY)
+                tile.paste(picture, ((size[0] - picture.width) // 2, (size[1] - picture.height) // 2), picture)
+                self.thumbs[key] = tile
+            except (OSError, ValueError):
+                self.thumbs[key] = None
+        return self.thumbs[key]
+
+    def _memes(self, view, spots, canvas, text, rect, line, fit, hovered, clickable, section, hatch) -> None:
+        """MEMES tab: the master switch and, per gesture, its picture, a collision warning and its switch."""
+        memes = view.memes
+        y = spots.effect
+        section(y - 16, "A", t("panel.memes"))
+        switch = (PAD, y, WIDTH - PAD, y + CAMERA_HEIGHT)
+        over = hovered(switch)
+        rect(switch, fill=HOVER if over else KEY, outline=INK if over else KEY_EDGE)
+        lamp = GREEN if memes.enabled else RULE
+        rect((PAD + 12, y + CAMERA_HEIGHT / 2 - 4, PAD + 20, y + CAMERA_HEIGHT / 2 + 4), fill=lamp)
+        text((PAD + 30, y + CAMERA_HEIGHT / 2), t("panel.memes_on" if memes.enabled else "panel.memes_off"), 15, INK,
+             "title", "lm")
+        clickable(switch, ("memes_enabled", not memes.enabled))
+        y += CAMERA_HEIGHT + 10
+        for name in GESTURES:
+            gesture = memes.gesture(name)
+            thumb = (PAD, y + 4, PAD + MEME_THUMB[0], y + 4 + MEME_THUMB[1])
+            picture = self.meme_thumb(gesture.image) if gesture.image is not None else None
+            if picture is not None:
+                canvas.paste(picture, (round(thumb[0] * SCALE), round(thumb[1] * SCALE)))
+                rect(thumb, outline=INK if hovered(thumb) else KEY_EDGE)
+            else:
+                rect(thumb, fill=HOVER if hovered(thumb) else KEY)
+                hatch(thumb, RULE)
+                text(((thumb[0] + thumb[2]) / 2, (thumb[1] + thumb[3]) / 2 - 1), "+", 20, INK, "mono", "mm")
+            clickable(thumb, ("meme_pick", name))
+            usable = memes.enabled and gesture.image is not None
+            text((PAD + MEME_THUMB[0] + 12, y + 15), t(f"meme.{name}").upper(), 11, INK if usable else GREY,
+                 "mono-bold", "lm", spacing=0.6)
+            effect = CONFLICTS.get(name)
+            if effect == view.mode:
+                note, color = t("panel.meme_conflict", effect=t(f"mode.{effect}.title")), AMBER
+            else:
+                note, color = t("panel.change_image" if gesture.image is not None else "panel.choose_image"), GREY
+            room = WIDTH - 2 * PAD - MEME_THUMB[0] - 70
+            text((PAD + MEME_THUMB[0] + 12, y + 31), fit(note, 9, "mono", room), 9, color, "mono", "lm")
+            # A small switch: green with the knob right when on.
+            toggle = (WIDTH - PAD - 40, y + 13, WIDTH - PAD - 4, y + 31)
+            on = gesture.on and usable
+            rect(toggle, fill=GREEN if on else (KEY if usable else FACE), outline=INK if usable and hovered(toggle) else KEY_EDGE)
+            knob = toggle[2] - 16 if on else toggle[0] + 2
+            rect((knob, toggle[1] + 2, knob + 14, toggle[3] - 2), fill=FACE if on else (RULE if usable else PALE))
+            if usable:
+                clickable(toggle, ("meme_on", name, not gesture.on))
+            y += MEME_ROW
+            line(PAD, y, WIDTH - PAD, y, RULE)
+        footer(view, spots, text, line, fit)
+
     @staticmethod
     def _settings(view, spots, capturing, text, rect, line, fit, hovered, clickable, section, key) -> None:
         """SETTINGS tab: the shortcuts switch, one row per action, and restoring the defaults."""
@@ -603,7 +675,8 @@ class ControlPanel:
     ("import", Path), ("error", text), ("vanish",), ("reappear",), ("recapture",),
     ("fullscreen",), ("camera", index), ("reopen_camera",), ("camera_settings",), ("detach",),
     ("cameras",) when the camera menu opens, to list the webcams again, and from the SETTINGS
-    tab ("shortcuts_enabled", bool) and ("reset_shortcuts",).
+    tab ("shortcuts_enabled", bool) and ("reset_shortcuts",), and from the MEMES tab
+    ("memes_enabled", bool), ("meme_on", gesture, bool) and ("meme_import", gesture, Path).
     """
 
     def __init__(self, title: str = PANEL_TITLE, renderer: PanelRenderer | None = None):
@@ -744,23 +817,27 @@ class ControlPanel:
         if ("add",) in actions:
             # A double click opens a single dialog.
             actions = [action for action in actions if action != ("add",)]
-            self._start_picker()
+            self._start_picker(lambda path: ("import", path))
+        for pick in [action for action in actions if action[0] == "meme_pick"]:
+            actions.remove(pick)
+            self._start_picker(lambda path, name=pick[1]: ("meme_import", name, path))
         while not self.picked.empty():
             actions.append(self.picked.get())
         return actions
 
-    def _start_picker(self) -> None:
+    def _start_picker(self, chosen) -> None:
+        """One file dialog at a time; chosen turns the picked path into the action to send."""
         if self.picking:
             return
         self.picking = True
         # The picker blocks: off the video thread, so the webcam keeps running.
-        threading.Thread(target=self._pick, name="background-picker", daemon=True).start()
+        threading.Thread(target=self._pick, args=(chosen,), name="picture-picker", daemon=True).start()
 
-    def _pick(self) -> None:
+    def _pick(self, chosen) -> None:
         try:
             path = pick_image_file()
             if path is not None:
-                self.picked.put(("import", path))
+                self.picked.put(chosen(path))
         except (OSError, RuntimeError) as error:
             self.picked.put(("error", str(error)))
         finally:

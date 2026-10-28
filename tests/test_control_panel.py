@@ -14,12 +14,14 @@ from vanishcam import app
 from vanishcam import detectors, segmentation
 from vanishcam.camera import CameraInfo
 from vanishcam.control_panel import (
-    ADD_TILE, AMBER, BAR, MODE_CARDS, STAGE, WIDTH, ControlPanel, PanelRenderer, PanelView, fit_into, hit, key_legend,
+    ADD_TILE, AMBER, BAR, MODE_CARDS, PAD, STAGE, WIDTH, ControlPanel, PanelRenderer, PanelView, fit_into, hit, key_legend,
     panel_height, tiles,
 )
 from .test_video_output import TEST_SHORTCUTS, InlineRecognizer, app_mocks, arguments, video_clock
 from vanishcam.i18n import t
 from vanishcam.modes import MODES
+from vanishcam.meme_poses import GESTURES
+from vanishcam.memes import MemeGesture, Memes
 from vanishcam.shortcuts import ACTIONS, Shortcuts
 from vanishcam.user_data import MAX_GALLERY, Settings, UserData
 
@@ -47,6 +49,29 @@ class UserDataTests(unittest.TestCase):
         custom = Shortcuts().with_enabled(True).rebind("quit", ord("q"))
         self.data.save(Settings("goku", None, None, False, custom))
         self.assertEqual(self.data.load().shortcuts, custom)
+
+    def test_memes_are_saved_and_loaded(self):
+        image = self.data.import_meme("calm", write_image(self.folder / "calma.png"))
+        memes = Memes().with_gesture("calm", image=image, on=True)
+        self.data.save(Settings(memes=memes))
+        self.assertEqual(self.data.load().memes, memes)
+        self.assertEqual(image.parent, self.data.memes_dir)
+
+    def test_choosing_again_replaces_the_old_copy(self):
+        first = self.data.import_meme("calm", write_image(self.folder / "a.png"))
+        other = self.data.import_meme("thumbs_up", write_image(self.folder / "c.png"))
+        second = self.data.import_meme("calm", write_image(self.folder / "b.png"))
+        self.assertFalse(first.exists())
+        self.assertTrue(second.exists())
+        self.assertTrue(other.exists())  # Another gesture's picture stays.
+        with self.assertRaises(ValueError):
+            self.data.import_meme("calm", self.folder / "notes.txt")
+
+    def test_missing_image_turns_the_gesture_off(self):
+        image = self.data.import_meme("calm", write_image(self.folder / "calma.png"))
+        self.data.save(Settings(memes=Memes().with_gesture("calm", image=image, on=True)))
+        image.unlink()
+        self.assertEqual(self.data.load().memes.gesture("calm"), MemeGesture())
 
     def test_old_or_broken_shortcuts_load_as_defaults(self):
         self.data.root.mkdir(parents=True, exist_ok=True)
@@ -216,7 +241,7 @@ class ControlPanelTabsTests(unittest.TestCase):
         view = PanelView(mode="normal", status="ready")
         image, regions = self.render(view)
         tabs = [r for r in regions if r.action[0] == "tab"]
-        self.assertEqual([r.action[1] for r in tabs], ["live", "settings"])
+        self.assertEqual([r.action[1] for r in tabs], ["live", "memes", "settings"])
         self.assertTrue(all(r.box[3] <= BAR for r in tabs))
         self.assertEqual(image.shape[0], panel_height(view))
         settings, _ = self.render(view, tab="settings")
@@ -251,6 +276,47 @@ class ControlPanelTabsTests(unittest.TestCase):
             self.assertEqual(key_legend(off, action), "")
         self.assertIn(t("panel.footer_off"), self.drawn_text(off))
         self.assertIn(t("panel.footer_on"), self.drawn_text(on))
+
+
+class MemesTabTests(unittest.TestCase):
+    def setUp(self):
+        self.image = write_image(Path(self.enterContext(tempfile.TemporaryDirectory())) / "a.png")
+
+    def render(self, view, **kwargs):
+        return PanelRenderer().render(view, **kwargs)
+
+    def actions(self, view):
+        return [region.action for region in self.render(view, tab="memes")[1]]
+
+    def test_three_tabs_fit_in_the_bar(self):
+        _, regions = self.render(PanelView("normal", ""))
+        tabs = [r for r in regions if r.action[0] == "tab"]
+        self.assertEqual([r.action[1] for r in tabs], ["live", "memes", "settings"])
+        self.assertTrue(all(r.box[2] < WIDTH - PAD - 20 for r in tabs))  # Clear of the lamp.
+
+    def test_rows_switches_and_pickers(self):
+        view = PanelView("normal", "", memes=Memes().with_gesture("calm", image=self.image, on=True))
+        image, _ = self.render(view, tab="memes")
+        self.assertEqual(image.shape[0], panel_height(PanelView("normal", "")))
+        actions = self.actions(view)
+        self.assertIn(("memes_enabled", False), actions)
+        self.assertEqual([a[1] for a in actions if a[0] == "meme_pick"], list(GESTURES))
+        self.assertIn(("meme_on", "calm", False), actions)
+        self.assertFalse(any(a[:2] == ("meme_on", "thumbs_up") for a in actions))  # No image yet.
+        self.assertFalse(any(a[0] in ("vanish", "capture") for a in actions))  # Nothing from other tabs.
+
+    def test_master_off_greys_the_switches(self):
+        memes = Memes().with_gesture("calm", image=self.image, on=True).with_enabled(False)
+        actions = self.actions(PanelView("normal", "", memes=memes))
+        self.assertIn(("memes_enabled", True), actions)
+        self.assertFalse(any(a[0] == "meme_on" for a in actions))
+        self.assertTrue(any(a[0] == "meme_pick" for a in actions))  # Pictures can still be chosen.
+
+    def test_conflict_warning_follows_the_effect(self):
+        warning = t("panel.meme_conflict", effect=t("mode.naruto.title"))
+        drawn = ControlPanelTabsTests.drawn_text(self, PanelView("naruto", ""), tab="memes")
+        self.assertIn(warning, drawn)
+        self.assertNotIn(warning, ControlPanelTabsTests.drawn_text(self, PanelView("goku", ""), tab="memes"))
 
 
 class ControlPanelWindowTests(unittest.TestCase):
@@ -472,6 +538,20 @@ class LiveSwitchTests(unittest.TestCase):
         )
         self.assertEqual(self.saved.shortcuts, Shortcuts())  # Off, and V still vanishes once turned on.
         self.assertIsNone(panel.capturing)
+
+    def test_importing_a_meme_turns_it_on_and_saves(self):
+        outside = write_image(Path(self.enterContext(tempfile.TemporaryDirectory())) / "joinha.png")
+        saved = self.run_with(actions=[("meme_import", "calm", outside)])
+        self.assertTrue(saved.memes.gesture("calm").on)
+        self.assertEqual(saved.memes.gesture("calm").image.parent.name, "memes")
+        self.assertTrue(outside.exists())  # The original is never touched.
+
+    def test_switching_a_meme_off_is_saved(self):
+        outside = write_image(Path(self.enterContext(tempfile.TemporaryDirectory())) / "joinha.png")
+        saved = self.run_with(actions=[("meme_import", "calm", outside), ("meme_on", "calm", False),
+                                       ("memes_enabled", False)])
+        self.assertFalse(saved.memes.gesture("calm").on)
+        self.assertFalse(saved.memes.enabled)
 
     def test_restoring_the_defaults_is_saved(self):
         saved = self.run_with(actions=[("reset_shortcuts",)], shortcuts=TEST_SHORTCUTS)

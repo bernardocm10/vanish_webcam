@@ -25,11 +25,12 @@ from .camera import (
 )
 from .cli import parse_args
 from .control_panel import ACCENTS, AMBER, FONT_DIR, FONTS, GREEN, MODE_CARDS, ControlPanel, PanelView, action_name
-from .detectors import AsyncRecognizer, detector_status
+from .detectors import AsyncRecognizer, create_meme_detector, detector_status
 from .effects.naruto import load_log
 from .i18n import t
 from .models import SEGMENTER_MODEL, download_models
-from .modes import MODES, FrameInfo, Mode
+from .memes import DETECT_INTERVAL as MEME_INTERVAL, MemeLayer
+from .modes import MODES, FrameInfo, Mode, half_resolution_rgb
 from .segmentation import PersonSegmenter, create_segmenter
 from .shortcuts import ESCAPE_CODES, Shortcuts, normalize
 from .sound import VanishSound
@@ -53,6 +54,7 @@ class AppState:
     last_background_update: float = float("-inf")
     fullscreen: bool = False
     quitting: bool = False  # A quit shortcut: leave like closing the window.
+    last_meme_check: float = float("-inf")
 
 
 def window_visible(name: str) -> bool:
@@ -84,6 +86,7 @@ def self_test() -> int:
     create_segmenter().close()
     for mode in MODES:
         create_recognizer(mode).close()
+    create_meme_detector().close()
     print(f"[VanishCam] {t('selftest.ok')}")
     return 0
 
@@ -211,10 +214,11 @@ def run_camera(args: argparse.Namespace, resources: ExitStack, mode_name: str | 
         return next((camera.name for camera in cameras if camera.index == camera_index), None)
 
     shortcuts = saved.shortcuts
+    memes = saved.memes
 
     def save_settings(mode: str | None = None) -> None:
         """Every preference at once: saving one must not drop the others."""
-        user_data.save(Settings(mode or effect.name, chosen, camera_name(), detached, shortcuts))
+        user_data.save(Settings(mode or effect.name, chosen, camera_name(), detached, shortcuts, memes))
 
     chosen: Path | None = None
     background_source: np.ndarray | None = None  # Chosen picture, at its original resolution.
@@ -251,6 +255,29 @@ def run_camera(args: argparse.Namespace, resources: ExitStack, mode_name: str | 
     resources.callback(cv2.destroyAllWindows)
     panel = ControlPanel()
     resources.callback(panel.close)
+
+    # Memes: their own detector, only while some gesture is on; the layer draws over any effect.
+    meme_layer = MemeLayer()
+    meme_recognizer = None
+    meme_detector: AsyncRecognizer | None = None
+
+    def sync_meme_detector() -> None:
+        nonlocal meme_recognizer, meme_detector
+        if memes.active() and meme_detector is None:
+            try:
+                meme_recognizer = create_meme_detector()
+            except Exception as error:
+                # Without the memes the effects still work: say why and carry on.
+                print(f"[Memes] {t('memes.failed', error=error)}")
+                return
+            meme_detector = AsyncRecognizer(meme_recognizer.recognize, meme_recognizer.close)
+        elif not memes.active() and meme_detector is not None:
+            meme_detector.close()
+            meme_recognizer = meme_detector = None
+            meme_layer.clear()
+
+    sync_meme_detector()
+    resources.callback(lambda: meme_detector is not None and meme_detector.close())
 
     def apply_fullscreen(enabled: bool) -> None:
         # Detached, the video goes fullscreen in its own window; otherwise the app window shows only the video.
@@ -396,7 +423,7 @@ def run_camera(args: argparse.Namespace, resources: ExitStack, mode_name: str | 
         save_settings()
 
     def handle(action: tuple, now: float) -> None:
-        nonlocal gallery, cameras, shortcuts
+        nonlocal gallery, cameras, shortcuts, memes
         kind = action[0]
         running = state.phase == "running"
         if kind == "mode":
@@ -447,6 +474,21 @@ def run_camera(args: argparse.Namespace, resources: ExitStack, mode_name: str | 
         elif kind == "reset_shortcuts":
             shortcuts = shortcuts.reset()
             panel.capturing = None
+            save_settings()
+        elif kind in ("memes_enabled", "meme_on", "meme_import"):
+            if kind == "memes_enabled":
+                memes = memes.with_enabled(action[1])
+            elif kind == "meme_on":
+                memes = memes.with_gesture(action[1], on=action[2])
+            else:
+                try:
+                    load_background_image(action[2])  # A picture OpenCV can read, like a background.
+                    copy = user_data.import_meme(action[1], action[2])
+                except (OSError, RuntimeError, ValueError) as error:
+                    notify(t("loop.image_not_added", error=error), now)
+                    return
+                memes = memes.with_gesture(action[1], image=copy, on=True)
+            sync_meme_detector()
             save_settings()
 
     card_base: np.ndarray | None = None  # Last image sent, dimmed: background of the reconnecting card.
@@ -545,6 +587,24 @@ def run_camera(args: argparse.Namespace, resources: ExitStack, mode_name: str | 
                             print(f"[Gesture] {detector_status(effect.recognizer, detected[0])}")
                             last_gesture_report = now
                     display = mode.render(FrameInfo(frame, background, now, elapsed_ms))
+                    if meme_detector is not None:
+                        try:
+                            if now - state.last_meme_check >= MEME_INTERVAL and not meme_detector.busy:
+                                state.last_meme_check = now
+                                meme_recognizer.enabled = memes.active()
+                                meme_detector.submit(half_resolution_rgb(camera_frame), elapsed_ms)
+                            found = meme_detector.take_result()
+                        except Exception as error:
+                            # The memes stop; the effect and the call carry on.
+                            print(f"[Memes] {t('memes.failed', error=error)}")
+                            meme_detector.close()
+                            meme_recognizer = meme_detector = None
+                            meme_layer.clear()
+                        else:
+                            if found is not None:
+                                meme_layer.on_detection(found[0], now, memes)
+                    # On a copy: the effect's own frames (a frozen vanished one) stay clean.
+                    display = meme_layer.render(display, now)
 
                     # The background follows light and small movements, even while invisible.
                     if (
@@ -580,7 +640,7 @@ def run_camera(args: argparse.Namespace, resources: ExitStack, mode_name: str | 
                 fullscreen=state.fullscreen, message=message if now < message_until else "",
                 cameras=cameras, camera_index=camera_index, camera_detail=camera_detail,
                 camera_state=camera_state(camera),
-                can_adjust=platform.system() == "Windows", detached=detached, shortcuts=shortcuts,
+                can_adjust=platform.system() == "Windows", detached=detached, shortcuts=shortcuts, memes=memes,
             ), display)
 
             # The full code: masking it to 8 bits would turn other keys into letters (End into W).
