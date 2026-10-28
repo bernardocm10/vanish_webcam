@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import platform
+import subprocess
 import threading
 import time
 from dataclasses import dataclass
@@ -26,6 +27,7 @@ VIRTUAL_CAMERAS = ("obs virtual camera", "unity video capture", "vanishcam")
 class CameraInfo:
     index: int  # The number open_camera takes.
     name: str
+    path: str | None = None  # The system's device path: finds its driver.
 
 
 def list_cameras() -> tuple[CameraInfo, ...]:
@@ -42,7 +44,7 @@ def list_cameras() -> tuple[CameraInfo, ...]:
     cameras: dict[int, CameraInfo] = {}
     for info in found:
         if info.index not in cameras and not any(name in info.name.lower() for name in VIRTUAL_CAMERAS):
-            cameras[info.index] = CameraInfo(info.index, info.name)
+            cameras[info.index] = CameraInfo(info.index, info.name, getattr(info, "path", None))
     return tuple(cameras.values())
 
 
@@ -67,12 +69,65 @@ def open_camera(index: int, width: int, height: int) -> cv2.VideoCapture:
     return capture
 
 
+# pnputil's exit codes besides success; the rest are reported as numbers.
+DRIVER_CANCELLED = 1223  # The Windows permission prompt (UAC) was declined.
+DRIVER_REBOOT = 3010
+
+
+def device_instance_id(path: str | None) -> str | None:
+    r"""The Windows device path of a webcam as the instance id pnputil takes.
+
+    \\?\usb#vid_090c&pid_b371&mi_00#6&341aedb9&0&0000#{65e8773d-...}\global
+    becomes USB\VID_090C&PID_B371&MI_00\6&341AEDB9&0&0000: bus, hardware id and
+    instance, without the interface GUID that follows them.
+    """
+    if not path:
+        return None
+    parts = path.removeprefix("\\\\?\\").split("#")
+    if len(parts) < 4 or not parts[0]:
+        return None
+    return "\\".join(parts[:3]).upper()
+
+
+def restart_driver(instance_id: str) -> str | None:
+    """Restart a webcam's driver (Windows, asks for permission); None when it worked, else why not.
+
+    Fixes a webcam stuck on a black image that reopening alone does not bring back.
+    """
+    if platform.system() != "Windows":
+        return t("camera.driver_windows_only")
+    # pnputil needs an administrator: Start-Process -Verb RunAs shows the UAC prompt.
+    script = (
+        "try { $p = Start-Process pnputil -ArgumentList '/restart-device', "
+        f"'\"{instance_id}\"' -Verb RunAs -WindowStyle Hidden -Wait -PassThru; exit $p.ExitCode }} "
+        f"catch {{ exit {DRIVER_CANCELLED} }}"
+    )
+    try:
+        code = subprocess.run(
+            ["powershell", "-NoProfile", "-NonInteractive", "-Command", script],
+            capture_output=True, timeout=120, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        ).returncode
+    except (OSError, subprocess.SubprocessError) as error:
+        return str(error)
+    if code == 0:
+        return None
+    if code == DRIVER_CANCELLED:
+        return t("camera.driver_cancelled")
+    if code == DRIVER_REBOOT:
+        return t("camera.driver_reboot")
+    return t("camera.driver_exit", code=code)
+
+
 class CameraReopener:
     """Reopen the webcam in a thread: opening can block for seconds, the video must not."""
 
-    def __init__(self, open_capture: Callable[[], cv2.VideoCapture], retry_seconds: float):
+    def __init__(self, open_capture: Callable[[], cv2.VideoCapture], retry_seconds: float,
+                 prepare: Callable[[], None] | None = None):
         self.open_capture = open_capture
         self.retry_seconds = retry_seconds
+        # Runs once before the first attempt, still off the video thread (a driver restart).
+        self.prepare = prepare
+        self.preparing = prepare is not None
         self.lock = threading.Lock()
         self.stopping = threading.Event()
         self.result: tuple[cv2.VideoCapture, np.ndarray] | None = None
@@ -80,6 +135,11 @@ class CameraReopener:
         self.thread.start()
 
     def _run(self) -> None:
+        if self.prepare is not None:
+            try:
+                self.prepare()
+            finally:
+                self.preparing = False
         while not self.stopping.is_set():
             try:
                 capture = self.open_capture()
@@ -143,6 +203,11 @@ class CameraFeed:
     def reconnecting(self) -> bool:
         return self.reopener is not None
 
+    @property
+    def restarting(self) -> bool:
+        """The driver is being restarted, before the webcam is opened again."""
+        return self.reopener is not None and self.reopener.preparing
+
     def read(self) -> np.ndarray | None:
         if self.reopener is not None:
             reopened = self.reopener.take()
@@ -178,8 +243,12 @@ class CameraFeed:
         self.frame_size = (frame.shape[1], frame.shape[0])
         return frame
 
-    def reopen(self, open_capture: Callable[[], cv2.VideoCapture] | None = None) -> None:
-        """Let the webcam go and open it (or another one) again in the background."""
+    def reopen(self, open_capture: Callable[[], cv2.VideoCapture] | None = None,
+               prepare: Callable[[], None] | None = None) -> None:
+        """Let the webcam go and open it (or another one) again in the background.
+
+        prepare runs first in the background, once the webcam is released (a driver restart).
+        """
         if open_capture is not None:
             self.open_capture = open_capture
         if self.reopener is not None:
@@ -189,7 +258,7 @@ class CameraFeed:
         self.failing_since = None
         self.lost_since = time.perf_counter()
         self.opening = True
-        self.reopener = CameraReopener(self.open_capture, self.retry_seconds)
+        self.reopener = CameraReopener(self.open_capture, self.retry_seconds, prepare)
 
     def open_settings(self) -> bool:
         """The driver's own settings dialog (exposure, focus, white balance); DirectShow only."""

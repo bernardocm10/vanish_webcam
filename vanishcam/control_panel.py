@@ -95,7 +95,7 @@ class PanelView:
     # The webcams to choose from (camera.CameraInfo) and the one in use.
     cameras: tuple = ()
     camera_index: int = 0
-    camera_state: str = "live"  # live | opening | reconnecting
+    camera_state: str = "live"  # live | opening | restarting | reconnecting
     camera_detail: str = ""
     can_adjust: bool = False
     detached: bool = False  # The video in its own window instead of beside the panel.
@@ -410,12 +410,13 @@ class PanelRenderer:
         section(y - 16, "C", t("panel.camera"))
         camera_box = (PAD, y, WIDTH - PAD, y + CAMERA_HEIGHT)
         selector(camera_box, "camera")
-        lamp_color = {"live": GREEN, "opening": AMBER, "reconnecting": AMBER}.get(view.camera_state, PALE)
+        lamp_color = GREEN if view.camera_state == "live" else AMBER
         rect((PAD + 12, y + CAMERA_HEIGHT / 2 - 4, PAD + 20, y + CAMERA_HEIGHT / 2 + 4), fill=lamp_color)
         name = fit(view.camera_name, 15, "title", WIDTH - 2 * PAD - 70)
         text((PAD + 30, y + CAMERA_HEIGHT / 2), name, 15, INK, "title", "lm")
         detail = {
-            "opening": t("panel.camera_opening"), "reconnecting": t("panel.camera_reconnecting"),
+            "opening": t("panel.camera_opening"), "restarting": t("panel.camera_restarting"),
+            "reconnecting": t("panel.camera_reconnecting"),
         }.get(view.camera_state, view.camera_detail)
         text((PAD + 30, y + CAMERA_HEIGHT + 11), detail, 10, AMBER if view.camera_state != "live" else GREY, "mono-bold", "lm", spacing=0.6)
         y += CAMERA_HEIGHT + 24

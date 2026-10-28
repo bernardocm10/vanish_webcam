@@ -10,7 +10,9 @@ from vanishcam import app
 from vanishcam import camera as camera_module
 from vanishcam import detectors, segmentation
 from vanishcam.app import choose_camera
-from vanishcam.camera import CameraFeed, CameraInfo, dim_for_card, list_cameras, reconnecting_card
+from vanishcam.camera import (
+    CameraFeed, CameraInfo, device_instance_id, dim_for_card, list_cameras, reconnecting_card, restart_driver,
+)
 from vanishcam.i18n import t
 from .test_video_output import InlineRecognizer, app_mocks, arguments
 
@@ -147,6 +149,62 @@ class CameraFeedTests(unittest.TestCase):
         capture.set.assert_called_once_with(camera_module.cv2.CAP_PROP_SETTINGS, 1)
         with patch.object(camera_module.platform, "system", return_value="Linux"):
             self.assertFalse(feed.open_settings())
+
+
+class DriverRestartTests(unittest.TestCase):
+    PATH = "\\\\?\\usb#vid_090c&pid_b371&mi_00#6&341aedb9&0&0000#{65e8773d-8f56-11d0-a3b9-00a0c9223196}\\global"
+    INSTANCE = "USB\\VID_090C&PID_B371&MI_00\\6&341AEDB9&0&0000"
+
+    def test_device_path_becomes_the_pnputil_instance_id(self):
+        self.assertEqual(device_instance_id(self.PATH), self.INSTANCE)
+        for path in (None, "", "/dev/video0"):
+            self.assertIsNone(device_instance_id(path))
+
+    def restart(self, code):
+        with patch.object(camera_module.platform, "system", return_value="Windows"), \
+                patch.object(camera_module.subprocess, "run", return_value=SimpleNamespace(returncode=code)) as run:
+            result = restart_driver(self.INSTANCE)
+        command = run.call_args.args[0]
+        self.assertEqual(command[0], "powershell")
+        self.assertIn("/restart-device", command[-1])
+        self.assertIn(f'"{self.INSTANCE}"', command[-1])
+        self.assertIn("-Verb RunAs", command[-1])  # pnputil needs the permission prompt.
+        return result
+
+    def test_outcomes(self):
+        self.assertIsNone(self.restart(0))
+        self.assertEqual(self.restart(camera_module.DRIVER_CANCELLED), t("camera.driver_cancelled"))
+        self.assertEqual(self.restart(camera_module.DRIVER_REBOOT), t("camera.driver_reboot"))
+        self.assertEqual(self.restart(5), t("camera.driver_exit", code=5))
+        with patch.object(camera_module.platform, "system", return_value="Linux"):
+            self.assertEqual(restart_driver(self.INSTANCE), t("camera.driver_windows_only"))
+
+    def test_driver_restarts_after_the_webcam_is_released_and_before_it_opens(self):
+        frame = np.zeros((HEIGHT, WIDTH, 3), np.uint8)
+        capture, reopened = Mock(), Mock()
+        reopened.read.return_value = (True, frame)
+        events, started, finish = [], threading.Event(), threading.Event()
+        capture.release.side_effect = lambda: events.append("released")
+
+        def restart():
+            events.append("restart")
+            started.set()
+            finish.wait(2.0)
+
+        def open_again():
+            events.append("open")
+            return reopened
+
+        feed = CameraFeed(Mock(return_value=capture))
+        feed.reopen(open_again, prepare=restart)
+        self.assertTrue(started.wait(2.0))
+        self.assertTrue(feed.restarting)
+        finish.set()
+        feed.reopener.thread.join(timeout=2.0)
+        self.assertFalse(feed.restarting)
+        self.assertIs(feed.read(), frame)
+        self.assertEqual(events, ["released", "restart", "open"])
+        feed.release()
 
 
 class CameraListTests(unittest.TestCase):

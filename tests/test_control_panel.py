@@ -437,6 +437,20 @@ class LiveSwitchTests(unittest.TestCase):
         reopen.assert_called_once_with()
         self.assertEqual(panel.views[-1].message, t("camera.settings_unavailable"))
 
+    def test_reopen_restarts_the_driver_on_windows_and_says_how_it_went(self):
+        path = "\\\\?\\usb#vid_090c&pid_b371&mi_00#6&341aedb9&0&0000#{65e8773d}\\global"
+        cameras = (CameraInfo(0, "USB 2.0 PC Cam", path),)
+        for outcome, message in ((None, t("camera.driver_restarted")),
+                                 ("permissão negada", t("camera.driver_failed", error="permissão negada"))):
+            # The restart runs right away here; in the app it runs in the reopening thread.
+            reopen = Mock(side_effect=lambda open_capture=None, prepare=None: prepare())
+            with patch.object(app.CameraFeed, "reopen", reopen), \
+                    patch.object(app.platform, "system", return_value="Windows"), \
+                    patch.object(app, "restart_driver", return_value=outcome) as restart:
+                _, _, panel, _, _ = self.run_app([[], [("reopen_camera",)]], frames=4, cameras=cameras)
+            restart.assert_called_once_with("USB\\VID_090C&PID_B371&MI_00\\6&341AEDB9&0&0000")
+            self.assertEqual(panel.views[-1].message, message)
+
     def test_escape_leaves_fullscreen_instead_of_quitting(self):
         _, _, panel, _, _ = self.run_app([[("fullscreen",)]], frames=4, keys=[0, 27, 0])
         self.assertEqual(panel.fullscreen, [True, False])

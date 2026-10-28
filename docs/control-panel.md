@@ -33,7 +33,7 @@ It follows your system language (see [Language](configuration.md#language)). Thi
 
 - The lamp is green while the webcam sends images and amber while it is opening or reconnecting. Under the name: the real resolution and frame rate.
 - Click the name to pick another webcam. The list is read again each time it opens, so a webcam plugged in meanwhile shows up. Virtual cameras (OBS Virtual Camera and the like) are left out: they are outputs, and reading one back would loop the video.
-- **REOPEN** (*REABRIR*) lets the webcam go and opens it again, without stopping the app: it fixes most frozen or black images.
+- **REOPEN** (*REABRIR*) lets the webcam go, restarts its driver, and opens it again, without stopping the app: it fixes frozen or black images that reopening alone does not. Restarting a driver needs administrator rights, so Windows asks for permission each time; if you decline, the webcam is only reopened. On Linux it only reopens the webcam.
 - **SETTINGS** (*AJUSTES*) opens the webcam driver's own settings window (exposure, focus, white balance). Windows only.
 - **DETACH** (*DESTACAR*, `D`) moves the video to its own **VanishCam - Video** window, for a second monitor or OBS's window capture, and the panel shrinks to its own width. **ATTACH** (*ACOPLAR*), `D` again, or closing the video window brings it back. The app remembers where you left it.
 

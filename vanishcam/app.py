@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import platform
+import queue
 import signal
 import subprocess
 import sys
@@ -17,7 +18,10 @@ import numpy as np
 
 from .background import fit_background, load_background_image, replace_background, update_background
 from .call_audio import CallSound, VirtualMic, open_virtual_mic
-from .camera import CameraFeed, CameraInfo, dim_for_card, list_cameras, open_camera, reconnecting_card
+from .camera import (
+    CameraFeed, CameraInfo, device_instance_id, dim_for_card, list_cameras, open_camera, reconnecting_card,
+    restart_driver,
+)
 from .cli import parse_args
 from .control_panel import ACCENTS, AMBER, FONT_DIR, FONTS, GREEN, MODE_CARDS, ControlPanel, PanelView
 from .detectors import AsyncRecognizer, create_recognizer, detection_function, detector_status
@@ -164,11 +168,19 @@ KEY_ACTIONS = {
 MESSAGE_SECONDS = 6.0
 
 
+def camera_state(camera: CameraFeed) -> str:
+    if not camera.reconnecting:
+        return "live"
+    if camera.restarting:
+        return "restarting"
+    return "opening" if camera.opening else "reconnecting"
+
+
 def panel_status(
-    phase: str, mode: Mode, calibration_remaining: int | None, reconnecting: bool = False, opening: bool = False,
+    phase: str, mode: Mode, calibration_remaining: int | None, camera: str = "live",
 ) -> tuple[str, tuple[int, int, int]]:
-    if reconnecting:
-        return t("status.opening" if opening else "status.reconnecting"), AMBER
+    if camera != "live":
+        return t(f"status.{camera}"), AMBER
     if phase == "calibrating":
         return t("status.calibrating", seconds=calibration_remaining or 0), AMBER
     if mode.phase in ("vanishing", "vanished", "appearing"):
@@ -250,6 +262,8 @@ def run_camera(args: argparse.Namespace, resources: ExitStack, mode_name: str | 
     calibration_remaining = None
     last_gesture_report = float("-inf")
     message, message_until = "", float("-inf")
+    # Driver restarts finish off the video thread: their outcome (None or why it failed) comes back here.
+    driver_results: queue.SimpleQueue[str | None] = queue.SimpleQueue()
     camera_detail, camera_detail_at = "", float("-inf")
     started = state.calibration_started
     width = height = 0
@@ -315,6 +329,16 @@ def run_camera(args: argparse.Namespace, resources: ExitStack, mode_name: str | 
             return
         user_data.save(Settings(name, chosen, camera_name(), detached))
         print(f"[{effect.mode.title}] {effect.mode.instructions}")
+
+    def reopen_camera(now: float) -> None:
+        """Let the webcam go, restart its driver (Windows, after the permission prompt), open it again."""
+        device = next((info for info in cameras if info.index == camera_index), None)
+        instance = device_instance_id(device.path) if device is not None else None
+        if instance is None or platform.system() != "Windows":
+            camera.reopen()
+            return
+        notify(t("camera.driver_restarting"), now)
+        camera.reopen(prepare=lambda: driver_results.put(restart_driver(instance)))
 
     def switch_camera(index: int, now: float) -> None:
         nonlocal camera_index
@@ -385,7 +409,7 @@ def run_camera(args: argparse.Namespace, resources: ExitStack, mode_name: str | 
         elif kind == "camera":
             switch_camera(action[1], now)
         elif kind == "reopen_camera":
-            camera.reopen()
+            reopen_camera(now)
         elif kind == "camera_settings" and not camera.open_settings():
             notify(t("camera.settings_unavailable"), now)
         elif kind == "detach":
@@ -411,10 +435,11 @@ def run_camera(args: argparse.Namespace, resources: ExitStack, mode_name: str | 
                 lost = now - camera.lost_since
                 # Redrawn only when the seconds or the blinking lamp change.
                 seconds, lamp_on = int(lost), int(lost * 2) % 2 == 0
-                if card is None or card[0] != (seconds, lamp_on):
-                    title = t("reconnect.opening_title" if camera.opening else "reconnect.title")
+                title = t({"restarting": "reconnect.restarting_title", "opening": "reconnect.opening_title"}.get(
+                    camera_state(camera), "reconnect.title"))
+                if card is None or card[0] != (seconds, lamp_on, title):
                     detail = t("reconnect.detail", index=camera_index, seconds=seconds)
-                    card = (seconds, lamp_on), reconnecting_card(card_base, title, detail, lamp_on)
+                    card = (seconds, lamp_on, title), reconnecting_card(card_base, title, detail, lamp_on)
                 display = card[1]
             else:
                 if card_base is not None:
@@ -509,14 +534,16 @@ def run_camera(args: argparse.Namespace, resources: ExitStack, mode_name: str | 
                 camera_detail_at = now
                 camera_detail = t("panel.camera_live", width=camera.frame_size[0], height=camera.frame_size[1],
                                   fps=round(camera.fps or 0))
-            status, status_color = panel_status(state.phase, mode, calibration_remaining, camera.reconnecting,
-                                                camera.opening)
+            while not driver_results.empty():
+                error = driver_results.get()
+                notify(t("camera.driver_restarted") if error is None else t("camera.driver_failed", error=error), now)
+            status, status_color = panel_status(state.phase, mode, calibration_remaining, camera_state(camera))
             panel.show(PanelView(
                 mode=effect.name, status=status, status_color=status_color, background=chosen,
                 gallery=gallery, manual_keys=mode.manual_keys, can_recapture=background_source is None,
                 fullscreen=state.fullscreen, message=message if now < message_until else "",
                 cameras=cameras, camera_index=camera_index, camera_detail=camera_detail,
-                camera_state=("opening" if camera.opening else "reconnecting") if camera.reconnecting else "live",
+                camera_state=camera_state(camera),
                 can_adjust=platform.system() == "Windows", detached=detached,
             ), display)
 
