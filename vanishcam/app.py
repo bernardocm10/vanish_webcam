@@ -24,13 +24,14 @@ from .camera import (
     reconnecting_card, restart_driver,
 )
 from .cli import parse_args
-from .control_panel import ACCENTS, AMBER, FONT_DIR, FONTS, GREEN, MODE_CARDS, ControlPanel, PanelView
+from .control_panel import ACCENTS, AMBER, FONT_DIR, FONTS, GREEN, MODE_CARDS, ControlPanel, PanelView, action_name
 from .detectors import AsyncRecognizer, detector_status
 from .effects.naruto import load_log
 from .i18n import t
 from .models import SEGMENTER_MODEL, download_models
 from .modes import MODES, FrameInfo, Mode
 from .segmentation import PersonSegmenter, create_segmenter
+from .shortcuts import ESCAPE_CODES, Shortcuts, normalize
 from .sound import VanishSound
 from .user_data import Settings, UserData
 from .virtual_camera import open_virtual_camera, send_virtual_frame
@@ -51,6 +52,7 @@ class AppState:
     last_gesture_check: float = float("-inf")
     last_background_update: float = float("-inf")
     fullscreen: bool = False
+    quitting: bool = False  # A quit shortcut: leave like closing the window.
 
 
 def window_visible(name: str) -> bool:
@@ -163,14 +165,6 @@ class EffectRuntime:
                 self.sound.close()
 
 
-KEY_ACTIONS = {
-    ord(" "): ("recapture",),
-    ord("r"): ("reappear",),
-    ord("v"): ("vanish",),
-    ord("f"): ("fullscreen",),
-    ord("d"): ("detach",),
-    **{ord(str(number)): ("mode", card.key) for number, card in enumerate(MODE_CARDS, start=1)},
-}
 MESSAGE_SECONDS = 6.0
 
 
@@ -216,6 +210,12 @@ def run_camera(args: argparse.Namespace, resources: ExitStack, mode_name: str | 
     def camera_name() -> str | None:
         return next((camera.name for camera in cameras if camera.index == camera_index), None)
 
+    shortcuts = saved.shortcuts
+
+    def save_settings(mode: str | None = None) -> None:
+        """Every preference at once: saving one must not drop the others."""
+        user_data.save(Settings(mode or effect.name, chosen, camera_name(), detached, shortcuts))
+
     chosen: Path | None = None
     background_source: np.ndarray | None = None  # Chosen picture, at its original resolution.
     if getattr(args, "background_image", None) is not None:
@@ -227,7 +227,7 @@ def run_camera(args: argparse.Namespace, resources: ExitStack, mode_name: str | 
             chosen = saved.background
         except RuntimeError as error:
             print(f"[VanishCam] {error}")
-    user_data.save(Settings(mode_name, chosen, camera_name(), detached))
+    save_settings(mode_name)
     gallery = tuple(user_data.gallery())
 
     download_models(MODES[mode_name].models)
@@ -292,7 +292,7 @@ def run_camera(args: argparse.Namespace, resources: ExitStack, mode_name: str | 
             except cv2.error:
                 pass  # Already closed by the user.
         panel.set_detached(enabled)
-        user_data.save(Settings(effect.name, chosen, camera_name(), detached))
+        save_settings()
 
     if detached:
         set_detached(True)
@@ -305,7 +305,7 @@ def run_camera(args: argparse.Namespace, resources: ExitStack, mode_name: str | 
         state.phase = "running"
         print(f"[VanishCam] {t('loop.background_file', path=chosen)}")
     print(f"[{effect.mode.title}] {effect.mode.instructions}")
-    print(f"[VanishCam] {t('loop.panel_hint', count=len(MODE_CARDS))}")
+    print(f"[VanishCam] {t('loop.panel_hint')}")
 
     def notify(text: str, now: float) -> None:
         nonlocal message, message_until
@@ -334,7 +334,7 @@ def run_camera(args: argparse.Namespace, resources: ExitStack, mode_name: str | 
             effect = EffectRuntime(previous, segment, mic)
             notify(t("loop.mode_failed", name=name, error=error), time.perf_counter())
             return
-        user_data.save(Settings(name, chosen, camera_name(), detached))
+        save_settings()
         print(f"[{effect.mode.title}] {effect.mode.instructions}")
 
     def reopen_camera(now: float) -> None:
@@ -353,7 +353,7 @@ def run_camera(args: argparse.Namespace, resources: ExitStack, mode_name: str | 
             return
         camera_index = index
         camera.reopen(open_capture)
-        user_data.save(Settings(effect.name, chosen, camera_name(), detached))
+        save_settings()
         notify(t("camera.switched", name=camera_name() or t("panel.camera_number", index=index)), now)
 
     def choose_background(path: Path | None, now: float) -> None:
@@ -376,10 +376,27 @@ def run_camera(args: argparse.Namespace, resources: ExitStack, mode_name: str | 
             state.phase = "running"
             background_samples.clear()
             effect.mode.reset()
-        user_data.save(Settings(effect.name, chosen, camera_name(), detached))
+        save_settings()
+
+    def capture_key(key: int, now: float) -> None:
+        """The SETTINGS tab waits for a new key: this one is for it, not an action."""
+        nonlocal shortcuts
+        if key in ESCAPE_CODES:
+            panel.capturing = None
+            return
+        code = normalize(key)
+        if code is None:
+            return  # Shift, Alt, media keys: keep waiting for a usable key.
+        owner = shortcuts.owner(code, exclude=panel.capturing)
+        if owner is not None:
+            notify(t("panel.shortcut_taken", shortcut=Shortcuts.label(code), action=action_name(owner)), now)
+            return
+        shortcuts = shortcuts.rebind(panel.capturing, code)
+        panel.capturing = None
+        save_settings()
 
     def handle(action: tuple, now: float) -> None:
-        nonlocal gallery, cameras
+        nonlocal gallery, cameras, shortcuts
         kind = action[0]
         running = state.phase == "running"
         if kind == "mode":
@@ -421,6 +438,16 @@ def run_camera(args: argparse.Namespace, resources: ExitStack, mode_name: str | 
             notify(t("camera.settings_unavailable"), now)
         elif kind == "detach":
             set_detached(not detached)
+        elif kind == "quit":
+            state.quitting = True
+        elif kind == "shortcuts_enabled":
+            shortcuts = shortcuts.with_enabled(action[1])
+            panel.capturing = None  # A key typed next must not bind anything.
+            save_settings()
+        elif kind == "reset_shortcuts":
+            shortcuts = shortcuts.reset()
+            panel.capturing = None
+            save_settings()
 
     card_base: np.ndarray | None = None  # Last image sent, dimmed: background of the reconnecting card.
     card: tuple[tuple[int, bool], np.ndarray] | None = None
@@ -553,23 +580,30 @@ def run_camera(args: argparse.Namespace, resources: ExitStack, mode_name: str | 
                 fullscreen=state.fullscreen, message=message if now < message_until else "",
                 cameras=cameras, camera_index=camera_index, camera_detail=camera_detail,
                 camera_state=camera_state(camera),
-                can_adjust=platform.system() == "Windows", detached=detached,
+                can_adjust=platform.system() == "Windows", detached=detached, shortcuts=shortcuts,
             ), display)
 
-            key = cv2.waitKey(5 if waiting else 1) & 0xFF
-            if key == 27 and state.fullscreen:
-                # Esc leaves fullscreen first, like everywhere else; Q still quits.
-                key = ord("f")
-            elif key in (ord("q"), 27) or panel.closed:
+            # The full code: masking it to 8 bits would turn other keys into letters (End into W).
+            key = cv2.waitKeyEx(5 if waiting else 1)
+            if panel.closed:
                 break
             if detached and display is not None and not window_visible(WINDOW_NAME):
                 # Closing the video window brings the video back beside the panel; only the panel quits.
                 set_detached(False)
             actions = panel.poll()
-            if key in KEY_ACTIONS:
-                actions.append(KEY_ACTIONS[key])
+            if panel.capturing is not None:
+                if key != -1:
+                    capture_key(key, now)
+            elif key in ESCAPE_CODES:
+                # ESC only leaves fullscreen, with or without shortcuts: there is no panel to click then.
+                if state.fullscreen:
+                    actions.append(("fullscreen",))
+            elif (shortcut := shortcuts.action_for(key)) is not None:
+                actions.append(shortcut)
             for action in actions:
                 handle(action, now)
+            if state.quitting:
+                break
             if waiting:
                 continue
             if virtual_camera is not None:

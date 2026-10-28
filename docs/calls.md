@@ -63,7 +63,7 @@ If [OBS Studio](https://obsproject.com/) is installed, the app automatically tri
 
 ### Inside an OBS scene
 
-1. Run `scripts\windows\start-obs.bat`. It starts with the video detached in its own **VanishCam - Video** window (`--video-window`); from any launcher, **DETACH** (`D`) in the panel does the same.
+1. Run `scripts\windows\start-obs.bat`. It starts with the video detached in its own **VanishCam - Video** window (`--video-window`); from any launcher, **DETACH** in the panel does the same.
 2. In OBS, add a **Window Capture** source and select the **VanishCam - Video** window.
 3. Start the virtual camera from OBS.
 

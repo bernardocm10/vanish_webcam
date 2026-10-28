@@ -12,6 +12,7 @@ Everything runs on your computer: the video is never recorded or sent anywhere, 
 
 - **Five effects**, each triggered by a hand gesture.
 - **One window:** the control panel beside the live video, to switch effect and background while the camera keeps running. Detach the video to its own window for a second monitor or OBS.
+- **No accidental keys:** keyboard shortcuts are off until you turn them on in **SETTINGS**, where you also pick each key, so typing in the wrong window never triggers an effect.
 - **Camera controls:** pick the webcam by name, see its real resolution and frame rate, open its settings, and reopen it (restarting its driver on Windows) when it gets stuck.
 - **Custom backgrounds:** put any picture behind you; when you vanish, the picture is what remains.
 - **Works in calls:** virtual webcam for Teams, Discord, Zoom, Meet, and OBS, and a virtual microphone so the call hears the effect sounds (PipeWire on Linux, VB-CABLE on Windows).
@@ -34,7 +35,7 @@ The **VanishCam** window opens: the control panel on the left, the live video be
 
 1. **Step out of the frame for 4 seconds** so the app can capture your room. Skipped if you pick a picture as the background.
 2. **Pick an effect and a background** in the panel.
-3. **Make the gesture** and vanish. Press `R` (or the gesture again, in Goku) to come back.
+3. **Make the gesture** and vanish. Click **REAPPEAR** (or make the gesture again, in Goku) to come back.
 
 Using it in a call? See [Calls, Teams and OBS](docs/calls.md).
 

@@ -14,12 +14,13 @@ from vanishcam import app
 from vanishcam import detectors, segmentation
 from vanishcam.camera import CameraInfo
 from vanishcam.control_panel import (
-    ADD_TILE, AMBER, MODE_CARDS, STAGE, WIDTH, ControlPanel, PanelRenderer, PanelView, fit_into, hit, panel_height,
-    tiles,
+    ADD_TILE, AMBER, BAR, MODE_CARDS, STAGE, WIDTH, ControlPanel, PanelRenderer, PanelView, fit_into, hit, key_legend,
+    panel_height, tiles,
 )
-from .test_video_output import InlineRecognizer, app_mocks, arguments, video_clock
+from .test_video_output import TEST_SHORTCUTS, InlineRecognizer, app_mocks, arguments, video_clock
 from vanishcam.i18n import t
 from vanishcam.modes import MODES
+from vanishcam.shortcuts import ACTIONS, Shortcuts
 from vanishcam.user_data import MAX_GALLERY, Settings, UserData
 
 
@@ -41,6 +42,21 @@ class UserDataTests(unittest.TestCase):
         self.assertEqual(self.data.load(), Settings())
         self.data.settings_file.write_text("[1, 2]", encoding="utf-8")
         self.assertEqual(self.data.load(), Settings())
+
+    def test_shortcuts_are_saved_and_loaded(self):
+        custom = Shortcuts().with_enabled(True).rebind("quit", ord("q"))
+        self.data.save(Settings("goku", None, None, False, custom))
+        self.assertEqual(self.data.load().shortcuts, custom)
+
+    def test_old_or_broken_shortcuts_load_as_defaults(self):
+        self.data.root.mkdir(parents=True, exist_ok=True)
+        cases = (({}, False), ({"shortcuts": 7}, False), ({"shortcuts": {"enabled": True, "keys": "x"}}, True))
+        for shortcuts, enabled in cases:
+            with self.subTest(shortcuts):
+                self.data.settings_file.write_text(json.dumps({"mode": "naruto", **shortcuts}), encoding="utf-8")
+                loaded = self.data.load()
+                self.assertEqual(loaded.mode, "naruto")
+                self.assertEqual(loaded.shortcuts, Shortcuts(enabled))
 
     def test_round_trip_and_deleted_image_returns_to_real_background(self):
         image = write_image(self.folder / "praia.png")
@@ -80,7 +96,7 @@ class PanelRendererTests(unittest.TestCase):
         self.assertEqual(list(MODES), order)
         self.assertEqual([card.key for card in MODE_CARDS], order)
         for number, name in enumerate(order, start=1):
-            self.assertEqual(app.KEY_ACTIONS[ord(str(number))], ("mode", name))
+            self.assertEqual(Shortcuts().with_enabled(True).action_for(ord(str(number))), ("mode", name))
 
     def setUp(self):
         self.folder = Path(self.enterContext(tempfile.TemporaryDirectory()))
@@ -179,6 +195,64 @@ class FitIntoTests(unittest.TestCase):
         self.assertTrue((fit_into(None, 40, 30) == STAGE).all())
 
 
+class ControlPanelTabsTests(unittest.TestCase):
+    def render(self, view, **kwargs):
+        return PanelRenderer().render(view, **kwargs)
+
+    def drawn_text(self, view, **kwargs):
+        """Everything the panel writes, joined: spaced text is drawn one letter at a time."""
+        drawn = []
+        original = control_panel.ImageDraw.ImageDraw.text
+
+        def spy(draw, xy, text, *args, **options):
+            drawn.append(text)
+            return original(draw, xy, text, *args, **options)
+
+        with patch.object(control_panel.ImageDraw.ImageDraw, "text", spy):
+            self.render(view, **kwargs)
+        return "".join(drawn)
+
+    def test_tabs_sit_in_the_top_bar_and_the_panel_does_not_grow(self):
+        view = PanelView(mode="normal", status="ready")
+        image, regions = self.render(view)
+        tabs = [r for r in regions if r.action[0] == "tab"]
+        self.assertEqual([r.action[1] for r in tabs], ["live", "settings"])
+        self.assertTrue(all(r.box[3] <= BAR for r in tabs))
+        self.assertEqual(image.shape[0], panel_height(view))
+        settings, _ = self.render(view, tab="settings")
+        self.assertEqual(settings.shape, image.shape)
+
+    def test_settings_tab_lists_every_action_and_the_switch(self):
+        view = PanelView(mode="normal", status="ready", shortcuts=Shortcuts().with_enabled(True))
+        _, regions = self.render(view, tab="settings")
+        actions = [r.action for r in regions]
+        self.assertIn(("shortcuts_enabled", False), actions)
+        self.assertIn(("reset_shortcuts",), actions)
+        self.assertEqual([a[1] for a in actions if a[0] == "capture"], list(ACTIONS))
+        self.assertFalse(any(a[0] in ("vanish", "background", "menu") for a in actions))  # Nothing from LIVE.
+
+    def test_rows_are_not_clickable_while_shortcuts_are_off(self):
+        _, regions = self.render(PanelView(mode="normal", status="ready"), tab="settings")
+        actions = [r.action for r in regions]
+        self.assertIn(("shortcuts_enabled", True), actions)
+        self.assertFalse(any(a[0] == "capture" for a in actions))
+
+    def test_capturing_row_asks_for_a_key(self):
+        view = PanelView(mode="normal", status="ready", shortcuts=Shortcuts().with_enabled(True))
+        self.assertIn(t("panel.press_key"), self.drawn_text(view, tab="settings", capturing="vanish"))
+
+    def test_live_legends_follow_the_bindings_and_vanish_when_off(self):
+        on = PanelView(mode="normal", status="ready", shortcuts=Shortcuts().with_enabled(True).rebind("vanish", ord("x")))
+        self.assertEqual(key_legend(on, "vanish"), "X")
+        self.assertEqual(key_legend(on, "recapture"), t("panel.space"))
+        self.assertEqual(key_legend(on, "quit"), "")
+        off = PanelView(mode="normal", status="ready")
+        for action in ("vanish", "reappear", "recapture", "fullscreen", "detach"):
+            self.assertEqual(key_legend(off, action), "")
+        self.assertIn(t("panel.footer_off"), self.drawn_text(off))
+        self.assertIn(t("panel.footer_on"), self.drawn_text(on))
+
+
 class ControlPanelWindowTests(unittest.TestCase):
     SIZE = (WIDTH + 400, 760)
 
@@ -197,6 +271,21 @@ class ControlPanelWindowTests(unittest.TestCase):
         x = (region.box[0] + region.box[2]) / 2
         y = (region.box[1] + region.box[3]) / 2
         self.panel._on_mouse(cv2.EVENT_LBUTTONUP, x, y, 0, None)
+
+    def test_poll_switches_tab_and_starts_capture(self):
+        on = PanelView("normal", "Pronto", shortcuts=Shortcuts().with_enabled(True))
+        self.panel.show(on, self.video)
+        self.click(("tab", "settings"))
+        self.assertEqual(self.panel.poll(), [])
+        self.assertEqual(self.panel.tab, "settings")
+        self.panel.show(on, self.video)
+        self.click(("capture", "vanish"))
+        self.assertEqual(self.panel.poll(), [])
+        self.assertEqual(self.panel.capturing, "vanish")
+        self.panel.show(on, self.video)
+        self.click(("tab", "live"))
+        self.panel.poll()
+        self.assertEqual((self.panel.tab, self.panel.capturing), ("live", None))
 
     def test_panel_redraws_only_on_change_while_the_video_updates_every_frame(self):
         view = PanelView("normal", "Pronto")
@@ -336,7 +425,7 @@ class LiveSwitchTests(unittest.TestCase):
                 app.cv2, "getWindowProperty", return_value=1.0 if video_window_open else 0.0,
             ))
             displayed = panel.frames
-            mocks.enter_context(patch.object(app.cv2, "waitKey", side_effect=keys))
+            mocks.enter_context(patch.object(app.cv2, "waitKeyEx", side_effect=keys))
             mocks.enter_context(patch("builtins.print"))
             self.assertEqual(app.run(), 0)
             # The temporary folder disappears on exit: read what was saved right away.
@@ -345,6 +434,77 @@ class LiveSwitchTests(unittest.TestCase):
             opening.assert_called_once()
             self.assertEqual(app.create_segmenter.call_count, 1)
         return images, displayed, panel, user_data, recognizers
+
+    def run_with(self, actions=(), capture=None, shortcuts=TEST_SHORTCUTS):
+        """Panel actions one per frame from the second; capture=(action, keys) rebinds through the keyboard.
+
+        The window closes at the end (shortcuts may be off: Q would not quit).
+        """
+        pressed = list(capture[1]) if capture else []
+        frames = 4 + len(actions) + len(pressed)
+        script = [[] for _ in range(frames - 1)]
+        for index, action in enumerate(actions, start=1):
+            script[index].append(action)
+        keys = [0] * (frames - 1)
+        if capture:
+            start = 1 + len(actions)
+            script[start].append(lambda panel: setattr(panel, "capturing", capture[0]) or ("none",))
+            keys[start:start + len(pressed)] = pressed
+        script[frames - 2].append(lambda panel: setattr(panel, "closed", True) or ("none",))
+        _, _, self.panel, _, _ = self.run_app(
+            script, frames=frames, keys=keys, setup=lambda data: data.save(Settings(shortcuts=shortcuts)),
+        )
+        return self.saved
+
+    def test_turning_shortcuts_on_and_rebinding_is_saved(self):
+        saved = self.run_with(actions=[("shortcuts_enabled", True)], capture=("vanish", [ord("x")]),
+                              shortcuts=Shortcuts())
+        self.assertTrue(saved.shortcuts.enabled)
+        self.assertEqual(saved.shortcuts.key_for("vanish"), ord("x"))
+        self.assertIsNone(self.panel.capturing)
+
+    def test_turning_shortcuts_off_cancels_a_capture(self):
+        script = [[], [lambda panel: setattr(panel, "capturing", "vanish") or ("none",)],
+                  [("shortcuts_enabled", False)], [], [lambda panel: setattr(panel, "closed", True) or ("none",)]]
+        _, _, panel, _, _ = self.run_app(
+            script, frames=6, keys=[0, 0, 0, ord("x"), 0],
+            setup=lambda data: data.save(Settings(shortcuts=Shortcuts().with_enabled(True))),
+        )
+        self.assertEqual(self.saved.shortcuts, Shortcuts())  # Off, and V still vanishes once turned on.
+        self.assertIsNone(panel.capturing)
+
+    def test_restoring_the_defaults_is_saved(self):
+        saved = self.run_with(actions=[("reset_shortcuts",)], shortcuts=TEST_SHORTCUTS)
+        self.assertEqual(saved.shortcuts, Shortcuts().with_enabled(True))
+
+    def test_modifier_keys_are_ignored_while_capturing(self):
+        saved = self.run_with(capture=("vanish", [0xFFE1, 0xFFE9, ord("x")]), shortcuts=Shortcuts().with_enabled(True))
+        self.assertEqual(saved.shortcuts.key_for("vanish"), ord("x"))
+
+    def test_escape_cancels_a_capture(self):
+        saved = self.run_with(capture=("vanish", [0xFF1B, ord("x")]), shortcuts=Shortcuts().with_enabled(True))
+        self.assertEqual(saved.shortcuts.key_for("vanish"), ord("v"))
+        self.assertIsNone(self.panel.capturing)
+
+    def test_a_key_already_used_is_refused(self):
+        saved = self.run_with(capture=("vanish", [ord("r")]), shortcuts=Shortcuts().with_enabled(True))
+        self.assertEqual(saved.shortcuts.key_for("vanish"), ord("v"))
+        self.assertTrue(any(view.message.startswith(Shortcuts.label(ord("r"))) for view in self.panel.views))
+        self.assertEqual(self.panel.capturing, "vanish")  # Still waiting for a free key.
+
+    def test_captured_key_is_not_dispatched(self):
+        # D is free once detach has moved to X: binding fullscreen to D must not also detach the video.
+        start = Shortcuts().with_enabled(True).rebind("detach", ord("x"))
+        saved = self.run_with(capture=("fullscreen", [ord("d")]), shortcuts=start)
+        self.assertEqual(saved.shortcuts.key_for("fullscreen"), ord("d"))
+        self.assertEqual(self.panel.detached, [])
+        self.assertEqual(self.panel.fullscreen, [])
+
+    def test_switching_effect_keeps_the_shortcuts(self):
+        custom = Shortcuts().with_enabled(True).rebind("quit", ord("q")).rebind("vanish", ord("x"))
+        saved = self.run_with(actions=[("mode", "naruto")], shortcuts=custom)
+        self.assertEqual(saved.mode, "naruto")
+        self.assertEqual(saved.shortcuts, custom)
 
     def gallery_image(self, user_data, value=30):
         return write_image(user_data.backgrounds_dir / "praia.png", value)
@@ -404,7 +564,7 @@ class LiveSwitchTests(unittest.TestCase):
 
     def test_startup_uses_saved_mode_and_background(self):
         def setup(user_data):
-            user_data.save(Settings("particles", self.gallery_image(user_data)))
+            user_data.save(Settings("particles", self.gallery_image(user_data), shortcuts=TEST_SHORTCUTS))
 
         images, displayed, panel, _, _ = self.run_app(
             frames=3, args=arguments(virtual_camera=False, mode=None), setup=setup,
@@ -496,7 +656,7 @@ class LiveSwitchTests(unittest.TestCase):
 
     def test_detached_video_is_remembered_and_closing_its_window_attaches_it(self):
         def setup(user_data):
-            user_data.save(Settings(None, None, None, True))
+            user_data.save(Settings(None, None, None, True, TEST_SHORTCUTS))
 
         _, _, panel, _, _ = self.run_app(frames=3, setup=setup, video_window_open=False)
         # Started detached as saved; closing the video window did not quit the app.

@@ -88,6 +88,12 @@ A row of tabs goes right under the black VANISHCAM top bar: **LIVE** (*AO VIVO*)
 
 **Fixed, not configurable:** `ESC` leaves fullscreen (as today). Closing the window quits. Outside fullscreen, `ESC` no longer quits (today it does, like `Q`): quitting must not be a single key.
 
+**Decision after the key probe (2026-10-28), replacing the default rules below.** On the owner's Linux machine (OpenCV 5.0 with the Qt backend, X11), `cv2.waitKeyEx` never reports Ctrl; Shift and Alt come as separate key events (X keysyms `0xFFE1`, `0xFFE9`) before a plain lowercase letter, sometimes late; and the laptop's F-keys send media keys (F2 and F5 sent nothing, F12 came as End). Neither combos nor function keys are reliable, so the owner chose:
+
+- **Keyboard shortcuts are off by default.** SETTINGS has an on/off switch for them. While off, no key does anything except `ESC`, which still leaves fullscreen. The panel buttons always work.
+- When on, each action has a **single key**: a letter, a digit, punctuation, or space (codes 32–126; letters are matched in lowercase). Turning them on starts from today's keys: `V`, `R`, `SPACE`, `F`, `D`, and `1`–`5` for the effects. Quit has no key unless the owner binds one.
+- The rules below about combos, function keys, and the probe no longer apply.
+
 **Defaults** must not be produced by typing ordinary text: no bare letters, digits, space, punctuation, Enter, or Backspace. Quit must not be a single key; by default it is a modifier combo if those work (below), or has no shortcut at all, leaving the window's close button.
 
 **Technical risk to settle first.** The loop reads keys with `cv2.waitKey(...) & 0xFF` (`app.py`), which drops function keys and modifiers. `cv2.waitKeyEx` returns more, but what it reports for Ctrl/Alt/Shift differs by OpenCV backend (Win32 on Windows; GTK or Qt on Linux depending on the wheel). The first task of this phase is a small probe that logs what `waitKeyEx` returns for Ctrl+letter, Alt+letter, Ctrl+Shift+letter, and F1–F12 on Linux; the owner runs it on Windows by hand, since CI cannot press keys. The probe must check that a combo can be told apart from the plain key, not only that `waitKeyEx` returns something: the Linux `opencv-contrib-python` wheel uses the Qt backend, which may swallow Ctrl-only combos or report Alt+letter and Ctrl+Shift+letter as the bare letter (unverified). Then:

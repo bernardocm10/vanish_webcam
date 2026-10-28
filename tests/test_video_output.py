@@ -13,6 +13,8 @@ import numpy as np
 from vanishcam import app
 from vanishcam import detectors, segmentation
 from vanishcam.segmentation import PersonSegmenter
+from vanishcam.shortcuts import Shortcuts
+from vanishcam.user_data import Settings
 
 
 def arguments(**overrides):
@@ -53,6 +55,7 @@ class FakePanel:
         self.fullscreen, self.detached = [], []
         self.last = None
         self.closed = False
+        self.capturing = None
 
     def show(self, view, video=None):
         # The video shown beside the panel: what the user sees. While no new frame comes the
@@ -80,7 +83,11 @@ class FakePanel:
         pass
 
 
-def app_mocks(mocks, segmenter, recognizer, actions=(), cameras=()):
+# The key scripts of the tests use the old keys: shortcuts on, with Q to quit.
+TEST_SHORTCUTS = Shortcuts().with_enabled(True).rebind("quit", ord("q"))
+
+
+def app_mocks(mocks, segmenter, recognizer, actions=(), cameras=(), shortcuts=TEST_SHORTCUTS):
     """Fake models, a fake panel and preferences in a temporary folder."""
     mocks.enter_context(patch.object(app, "create_segmenter", return_value=segmenter))
     mocks.enter_context(patch.object(app, "create_recognizer", return_value=recognizer))
@@ -92,6 +99,7 @@ def app_mocks(mocks, segmenter, recognizer, actions=(), cameras=()):
     mocks.enter_context(patch.object(app, "FrameReader", lambda capture: capture))
     folder = mocks.enter_context(tempfile.TemporaryDirectory())
     user_data = app.UserData(Path(folder))
+    user_data.save(Settings(shortcuts=shortcuts))
     mocks.enter_context(patch.object(app.UserData, "default", return_value=user_data))
     return panel, user_data
 
@@ -175,7 +183,7 @@ class VideoLoopTests(unittest.TestCase):
             destroy = mocks.enter_context(patch.object(app.cv2, "destroyAllWindows"))
             displayed = panel.frames
             keys = (0, 0, ord("v") if gesture[0] != "Victory" else 0, 0, ord("q"))
-            mocks.enter_context(patch.object(app.cv2, "waitKey", side_effect=keys))
+            mocks.enter_context(patch.object(app.cv2, "waitKeyEx", side_effect=keys))
             mocks.enter_context(patch.object(app.cv2, "putText", side_effect=AssertionError("No text may be drawn over the video")))
             mocks.enter_context(patch("builtins.print"))
             if send_error is None:
@@ -217,7 +225,7 @@ class VideoLoopTests(unittest.TestCase):
             mocks.enter_context(patch.object(app.cv2, "resizeWindow"))
             mocks.enter_context(patch.object(app.cv2, "destroyAllWindows"))
             displayed = panel.frames
-            mocks.enter_context(patch.object(app.cv2, "waitKey", side_effect=(0, ord("v"), ord("q"))))
+            mocks.enter_context(patch.object(app.cv2, "waitKeyEx", side_effect=(0, ord("v"), ord("q"))))
             mocks.enter_context(patch("builtins.print"))
             self.assertEqual(app.run(), 0)
         loaded.assert_called_once_with(Path("beach.png"))
@@ -302,6 +310,66 @@ class PersonSegmenterTests(unittest.TestCase):
             self.assertIsNot(segmenter(frame, 133), first)
         self.assertEqual(segment.call_count, 2)
         self.assertEqual(segment.call_args.args[2:], (133, 6, 4))
+
+
+class ShortcutKeysTests(unittest.TestCase):
+    def run_keys(self, keys, shortcuts, fullscreen=False):
+        """The app on a picture background, one key press per frame; the window closes after the last."""
+        keys = list(keys)
+        capture = Mock()
+        frames = [np.full((24, 40, 3), 200, np.uint8) for _ in keys]
+        read, clock = video_clock(frames, [0.1 * index for index in range(len(keys))])
+        capture.read.side_effect = read
+        mask = np.zeros((24, 40), np.float32)
+        mask[:, :20] = 1.0  # Person on the left.
+        with ExitStack() as mocks:
+            args = arguments(virtual_camera=False, background_image="beach.png", fullscreen=fullscreen)
+            mocks.enter_context(patch.object(app, "parse_args", return_value=args))
+            mocks.enter_context(patch.object(app, "download_models"))
+            mocks.enter_context(patch.object(app, "open_camera", return_value=capture))
+            panel, _ = app_mocks(mocks, Mock(), Mock(), shortcuts=shortcuts)
+            mocks.enter_context(patch.object(
+                app, "load_background_image", return_value=np.full((48, 80, 3), 30, np.uint8),
+            ))
+            mocks.enter_context(patch.object(segmentation, "person_mask", return_value=mask))
+            mocks.enter_context(patch.object(detectors, "recognize_gesture", return_value=("No_Hand", 0.0)))
+            mocks.enter_context(patch.object(app, "AsyncRecognizer", InlineRecognizer))
+            mocks.enter_context(patch.object(app.time, "perf_counter", side_effect=clock))
+            for name in ("namedWindow", "resizeWindow", "destroyAllWindows"):
+                mocks.enter_context(patch.object(app.cv2, name))
+
+            def wait_key(delay):
+                key = keys.pop(0)
+                panel.closed = not keys
+                return key
+
+            mocks.enter_context(patch.object(app.cv2, "waitKeyEx", side_effect=wait_key))
+            mocks.enter_context(patch("builtins.print"))
+            self.assertEqual(app.run(), 0)
+            self.recognizers = app.create_recognizer.call_count
+        self.assertEqual(keys, [])  # Every key was read: nothing quit early.
+        return panel
+
+    def test_typing_does_nothing_while_shortcuts_are_off(self):
+        panel = self.run_keys([ord(c) for c in "vou sair rapidinho 12345"], Shortcuts())
+        # Nobody vanished, no fullscreen, no detach, no other effect.
+        self.assertTrue(all((frame[:, :20] == 200).all() for frame in panel.frames))
+        self.assertEqual(panel.fullscreen, [])
+        self.assertEqual(panel.detached, [])
+        self.assertEqual(self.recognizers, 1)
+
+    def test_escape_leaves_fullscreen_and_never_quits(self):
+        for escape in (27, 0xFF1B):
+            with self.subTest(escape):
+                panel = self.run_keys([ord("f"), escape, escape, 0, 0], Shortcuts().with_enabled(True))
+                self.assertEqual(panel.fullscreen, [True, False])
+
+    def test_escape_leaves_fullscreen_with_shortcuts_off(self):
+        # The default: no shortcuts, started fullscreen, no panel to click. ESC is the way out.
+        for escape in (27, 0xFF1B):
+            with self.subTest(escape):
+                panel = self.run_keys([0, escape, 0], Shortcuts(), fullscreen=True)
+                self.assertEqual(panel.fullscreen[-1], False)
 
 
 if __name__ == "__main__":
