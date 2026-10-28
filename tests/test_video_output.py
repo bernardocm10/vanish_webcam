@@ -93,6 +93,8 @@ def app_mocks(mocks, segmenter, recognizer, actions=(), cameras=(), shortcuts=TE
     """Fake models, a fake panel and preferences in a temporary folder."""
     mocks.enter_context(patch.object(app, "create_segmenter", return_value=segmenter))
     mocks.enter_context(patch.object(app, "create_recognizer", return_value=recognizer))
+    # No real face and hand models for the memes either: a detector that never sees a gesture.
+    mocks.enter_context(patch.object(app, "create_meme_detector", return_value=Mock(**{"recognize.return_value": None})))
     panel = FakePanel(actions)
     mocks.enter_context(patch.object(app, "ControlPanel", return_value=panel))
     # No real webcam listing in tests: the camera number from the arguments is used.
@@ -383,7 +385,7 @@ class MemeLoopTests(unittest.TestCase):
         self.white_png = folder / "white.png"
         cv2.imwrite(str(self.white_png), np.full((2, 2, 3), 255, np.uint8))
 
-    def run_memes(self, memes, results, mode="normal", keys=None):
+    def run_memes(self, memes, results, mode="normal", keys=None, actions=()):
         """The app on a picture background; the meme detector answers results, one per detection."""
         frames = len(results) + 1
         capture = Mock()
@@ -402,7 +404,7 @@ class MemeLoopTests(unittest.TestCase):
             mocks.enter_context(patch.object(app, "parse_args", return_value=args))
             mocks.enter_context(patch.object(app, "download_models"))
             mocks.enter_context(patch.object(app, "open_camera", return_value=capture))
-            panel, user_data = app_mocks(mocks, Mock(), recognizer)
+            panel, user_data = app_mocks(mocks, Mock(), recognizer, actions)
             user_data.save(Settings(shortcuts=TEST_SHORTCUTS, memes=memes))
             mocks.enter_context(patch.object(app, "open_virtual_camera", return_value=camera))
             mocks.enter_context(patch.object(
@@ -438,6 +440,15 @@ class MemeLoopTests(unittest.TestCase):
         self.creating.assert_not_called()
         self.run_memes(Memes().with_gesture("calm", image=self.white_png, on=True).with_enabled(False), [None] * 4)
         self.creating.assert_not_called()
+
+    def test_master_off_clears_and_stops_detection(self):
+        memes = Memes().with_gesture("thumbs_up", image=self.white_png, on=True)
+        actions = [[]] * 8 + [[("memes_enabled", False)]]
+        _, sent = self.run_memes(memes, results=["thumbs_up"] * 6 + [None] * 6, actions=actions)
+        self.assertTrue((sent[7][12, 20] == 255).all())  # On screen...
+        self.assertTrue((sent[-1][12, 20] == 100).all())  # ...gone right after the switch.
+        self.assertEqual(self.detector.close.call_count, 1)  # Closed then, not again on exit.
+        self.assertEqual(self.detector.recognize.call_count, 9)  # No detection after it.
 
     def test_meme_never_changes_the_effect_frame(self):
         # Naruto vanishes with V at the second frame and keeps its frozen frame; a meme pops up

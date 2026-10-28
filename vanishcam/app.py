@@ -423,7 +423,7 @@ def run_camera(args: argparse.Namespace, resources: ExitStack, mode_name: str | 
         save_settings()
 
     def handle(action: tuple, now: float) -> None:
-        nonlocal gallery, cameras, shortcuts
+        nonlocal gallery, cameras, shortcuts, memes
         kind = action[0]
         running = state.phase == "running"
         if kind == "mode":
@@ -474,6 +474,21 @@ def run_camera(args: argparse.Namespace, resources: ExitStack, mode_name: str | 
         elif kind == "reset_shortcuts":
             shortcuts = shortcuts.reset()
             panel.capturing = None
+            save_settings()
+        elif kind in ("memes_enabled", "meme_on", "meme_import"):
+            if kind == "memes_enabled":
+                memes = memes.with_enabled(action[1])
+            elif kind == "meme_on":
+                memes = memes.with_gesture(action[1], on=action[2])
+            else:
+                try:
+                    load_background_image(action[2])  # A picture OpenCV can read, like a background.
+                    copy = user_data.import_meme(action[1], action[2])
+                except (OSError, RuntimeError, ValueError) as error:
+                    notify(t("loop.image_not_added", error=error), now)
+                    return
+                memes = memes.with_gesture(action[1], image=copy, on=True)
+            sync_meme_detector()
             save_settings()
 
     card_base: np.ndarray | None = None  # Last image sent, dimmed: background of the reconnecting card.
@@ -617,7 +632,7 @@ def run_camera(args: argparse.Namespace, resources: ExitStack, mode_name: str | 
                 fullscreen=state.fullscreen, message=message if now < message_until else "",
                 cameras=cameras, camera_index=camera_index, camera_detail=camera_detail,
                 camera_state=camera_state(camera),
-                can_adjust=platform.system() == "Windows", detached=detached, shortcuts=shortcuts,
+                can_adjust=platform.system() == "Windows", detached=detached, shortcuts=shortcuts, memes=memes,
             ), display)
 
             # The full code: masking it to 8 bits would turn other keys into letters (End into W).
