@@ -8,5 +8,4 @@ models/gesture_recognizer.task
 models/selfie_segmenter_landscape.tflite
 *.part
 /build/
-/dist/*
-!/dist/VanishCam.exe
+/dist/

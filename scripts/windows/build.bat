@@ -21,7 +21,7 @@ goto :build
 
 :models
 echo Downloading the required MediaPipe models...
-py -3 -c "from vanishcam.app import download_models; download_models()"
+py -3 -c "from vanishcam.models import download_models; download_models()"
 if errorlevel 1 goto :error
 
 :build
