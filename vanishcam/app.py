@@ -211,10 +211,11 @@ def run_camera(args: argparse.Namespace, resources: ExitStack, mode_name: str | 
         return next((camera.name for camera in cameras if camera.index == camera_index), None)
 
     shortcuts = saved.shortcuts
+    memes = saved.memes
 
     def save_settings(mode: str | None = None) -> None:
         """Every preference at once: saving one must not drop the others."""
-        user_data.save(Settings(mode or effect.name, chosen, camera_name(), detached, shortcuts))
+        user_data.save(Settings(mode or effect.name, chosen, camera_name(), detached, shortcuts, memes))
 
     chosen: Path | None = None
     background_source: np.ndarray | None = None  # Chosen picture, at its original resolution.

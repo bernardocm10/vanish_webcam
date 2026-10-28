@@ -20,6 +20,7 @@ from vanishcam.control_panel import (
 from .test_video_output import TEST_SHORTCUTS, InlineRecognizer, app_mocks, arguments, video_clock
 from vanishcam.i18n import t
 from vanishcam.modes import MODES
+from vanishcam.memes import MemeGesture, Memes
 from vanishcam.shortcuts import ACTIONS, Shortcuts
 from vanishcam.user_data import MAX_GALLERY, Settings, UserData
 
@@ -47,6 +48,29 @@ class UserDataTests(unittest.TestCase):
         custom = Shortcuts().with_enabled(True).rebind("quit", ord("q"))
         self.data.save(Settings("goku", None, None, False, custom))
         self.assertEqual(self.data.load().shortcuts, custom)
+
+    def test_memes_are_saved_and_loaded(self):
+        image = self.data.import_meme("calm", write_image(self.folder / "calma.png"))
+        memes = Memes().with_gesture("calm", image=image, on=True)
+        self.data.save(Settings(memes=memes))
+        self.assertEqual(self.data.load().memes, memes)
+        self.assertEqual(image.parent, self.data.memes_dir)
+
+    def test_choosing_again_replaces_the_old_copy(self):
+        first = self.data.import_meme("calm", write_image(self.folder / "a.png"))
+        other = self.data.import_meme("thumbs_up", write_image(self.folder / "c.png"))
+        second = self.data.import_meme("calm", write_image(self.folder / "b.png"))
+        self.assertFalse(first.exists())
+        self.assertTrue(second.exists())
+        self.assertTrue(other.exists())  # Another gesture's picture stays.
+        with self.assertRaises(ValueError):
+            self.data.import_meme("calm", self.folder / "notes.txt")
+
+    def test_missing_image_turns_the_gesture_off(self):
+        image = self.data.import_meme("calm", write_image(self.folder / "calma.png"))
+        self.data.save(Settings(memes=Memes().with_gesture("calm", image=image, on=True)))
+        image.unlink()
+        self.assertEqual(self.data.load().memes.gesture("calm"), MemeGesture())
 
     def test_old_or_broken_shortcuts_load_as_defaults(self):
         self.data.root.mkdir(parents=True, exist_ok=True)
