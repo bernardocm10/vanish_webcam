@@ -19,7 +19,7 @@ Everything runs on your computer: the video is never recorded or sent anywhere, 
 
 ## Quick start
 
-**Windows:** double-click `scripts\windows\start.bat`. The first run installs everything it needs (internet required once).
+**Windows:** download `VanishCam.exe` from the [latest release](https://github.com/bernardocm10/vanish_webcam/releases/latest) and run it, no Python needed. Or, from the source code, double-click `scripts\windows\start.bat`: the first run installs everything it needs (internet required once).
 
 **Linux:**
 

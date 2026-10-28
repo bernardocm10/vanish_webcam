@@ -69,6 +69,17 @@ Code, comments, docs and commit messages are in English. Anything the user reads
 
 Run `scripts\windows\build.bat` to build a standalone `dist\VanishCam.exe` that runs without Python. The build is defined in `packaging/VanishCam.spec` (PyInstaller) and bundles the models, sounds, the log image, and the panel fonts.
 
+### Publishing a release
+
+Push a version tag and GitHub Actions builds the EXE, runs its self-test, and publishes it on the [Releases](https://github.com/bernardocm10/vanish_webcam/releases) page (`.github/workflows/release.yml`):
+
+```bash
+git tag v1.0.0
+git push origin v1.0.0
+```
+
+To only build it, run the **Release** workflow by hand from the Actions tab and download the EXE from the run's artifacts.
+
 ## Fonts
 
 The panel uses [IBM Plex](https://github.com/IBM/plex) Mono and Sans Condensed, bundled in `assets/fonts` under the [SIL Open Font License](../assets/fonts/OFL.txt), so it looks the same on every system.
