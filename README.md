@@ -4,17 +4,18 @@
 
 Vanish from your webcam with a hand gesture, live in Teams, OBS, or any video call. Dissolve into thin air, swap yourself for a log in a cloud of smoke, teleport like Goku, scatter into fragments in the wind, or turn to ash and crumble — in front of your real room or any picture you choose.
 
-<p align="center"><img src="docs/panel.png" alt="VanishCam control panel" width="360"></p>
+<p align="center"><img src="docs/window.png" alt="The VanishCam window: the control panel on the left and the live video beside it, right after vanishing in front of a sunset picture" width="820"></p>
 
 Everything runs on your computer: the video is never recorded or sent anywhere, and the video you send to a call shows only you and the effect, with no menus or text on top.
 
 ## Features
 
 - **Five effects**, each triggered by a hand gesture.
-- **Control panel** to switch effect and background while the camera keeps running.
+- **One window:** the control panel beside the live video, to switch effect and background while the camera keeps running. Detach the video to its own window for a second monitor or OBS.
+- **Camera controls:** pick the webcam by name, see its real resolution and frame rate, open its settings, and reopen it (restarting its driver on Windows) when it gets stuck.
 - **Custom backgrounds:** put any picture behind you; when you vanish, the picture is what remains.
 - **Works in calls:** virtual webcam for Teams, Discord, Zoom, Meet, and OBS, and a virtual microphone so the call hears the effect sounds (PipeWire on Linux, VB-CABLE on Windows).
-- **Remembers your choices** and starts with the last effect and background.
+- **Remembers your choices** and starts with the last effect, background, webcam, and window layout.
 - **Speaks your language:** the panel and messages are in English or Brazilian Portuguese, following your system.
 
 ## Quick start
