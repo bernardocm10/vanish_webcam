@@ -13,6 +13,7 @@ from vanishcam.call_audio import (
     PipeWireMic, default_source, open_virtual_mic, resample,
 )
 from vanishcam.i18n import t
+from vanishcam.modes import GokuMode, NarutoMode
 from .test_video_output import arguments
 
 
@@ -193,6 +194,23 @@ class CallSoundTests(unittest.TestCase):
             sound = app.open_sound("naruto", mic)
         self.assertIsInstance(sound, CallSound)
         self.assertIsNone(app.open_sound("normal", mic))
+
+    def test_missing_optional_sound_runs_silent(self):
+        with patch.object(GokuMode, "sound_file", return_value=Path("nowhere/teleport.MP3")), \
+                patch("builtins.print") as printed:
+            self.assertIsNone(app.open_sound("goku", None))
+        self.assertIn("teleport.MP3", printed.call_args.args[0])
+        self.assertTrue(printed.call_args.args[0].startswith("[Goku]"))
+
+    def test_missing_required_sound_is_an_error(self):
+        with patch.object(NarutoMode, "sound_file", return_value=Path("nowhere/vanish.MP3")):
+            with self.assertRaises(RuntimeError):
+                app.open_sound("naruto", None)
+
+    def test_self_test_requires_every_declared_file(self):
+        with patch.object(GokuMode, "sound_file", return_value=Path("nowhere/teleport.MP3")):
+            with self.assertRaisesRegex(RuntimeError, "teleport.MP3"):
+                app.self_test()
 
 
 if __name__ == "__main__":

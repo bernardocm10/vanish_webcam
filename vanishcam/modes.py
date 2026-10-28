@@ -25,8 +25,8 @@ from .effects.ash import (
     EFFECT_SECONDS as ASH_EFFECT_SECONDS, HANDS_UP_HOLD_SECONDS, make_ash, render_ash, render_remains,
 )
 from .effects.goku import (
-    EFFECT_SECONDS as GOKU_EFFECT_SECONDS, HoldTracker, make_speed_lines,
-    render_teleport, teleport_region,
+    EFFECT_SECONDS as GOKU_EFFECT_SECONDS, SOUND_NAME as GOKU_SOUND_NAME, HoldTracker, make_speed_lines,
+    render_teleport, sound_path, teleport_region,
 )
 from .effects.naruto import (
     EFFECT_SECONDS as NARUTO_EFFECT_SECONDS, HOLD_SECONDS as NARUTO_HOLD_SECONDS,
@@ -40,6 +40,8 @@ from .effects.particles import (
 )
 from .i18n import t
 from .models import FACE_MODEL, GESTURE_MODEL, HAND_MODEL
+from .paths import ASSETS_DIR
+from .sound import SOUND_PATH
 
 # BGR frame, timestamp in ms -> person mask (0..1) at full resolution.
 Segment = Callable[[np.ndarray, int], np.ndarray]
@@ -73,6 +75,14 @@ class Mode:
     def detect(recognizer, image: mp.Image, timestamp_ms: int):
         """One detection on the recognizer thread; the result goes to on_detection."""
         raise NotImplementedError
+
+    @staticmethod
+    def sound_file() -> Path | None:
+        """Played when vanishing; None: silent."""
+        return None
+
+    # A missing optional sound leaves the effect silent instead of stopping it.
+    sound_optional = False
 
     def __init__(self, segment: Segment, sound=None):
         self.segment = segment
@@ -274,6 +284,7 @@ class NarutoMode(Mode):
     name = "naruto"
     models = (HAND_MODEL,)
     create_recognizer = staticmethod(create_hand_landmarker)
+    sound_file = staticmethod(lambda: SOUND_PATH)
 
     @staticmethod
     def detect(recognizer, image: mp.Image, timestamp_ms: int):
@@ -337,6 +348,12 @@ class GokuMode(Mode):
     name = "goku"
     models = (HAND_MODEL, FACE_MODEL)
     pose_detector: type[GokuPoseDetector] = GokuPoseDetector
+    sound_optional = True
+
+    @staticmethod
+    def sound_file() -> Path | None:
+        # Replaceable by the user, in any letter case; named in the message when missing.
+        return sound_path() or ASSETS_DIR / GOKU_SOUND_NAME
 
     @classmethod
     def create_recognizer(cls):
