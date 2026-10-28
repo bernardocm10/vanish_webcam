@@ -15,7 +15,7 @@ Pass them after the start command, for example `.venv/bin/python -m vanishcam --
 | `--fps N` | Maximum frame rate sent to the virtual webcam (default: 30) |
 | `--virtual-camera` / `--no-virtual-camera` | Require or disable the virtual webcam (default: use it if available) |
 | `--virtual-backend`, `--virtual-device` | Pick the virtual webcam driver and device |
-| `--call-audio` | Create the **VanishCam Mic** virtual microphone (Linux, PipeWire) |
+| `--call-audio` | Send your voice plus the effect sounds to the call: **VanishCam Mic** on Linux (PipeWire), **CABLE Output** on Windows ([VB-CABLE](calls.md#windows-call-microphone-with-vb-cable)) |
 | `--no-mirror` | Do not mirror the video |
 | `--fullscreen` | Start in fullscreen |
 | `--static-background` | Keep the captured background as it is instead of updating it |

@@ -11,7 +11,7 @@ Everything runs on your computer: the video is never recorded or sent anywhere, 
 - **Five effects**, each triggered by a hand gesture.
 - **Control panel** to switch effect and background while the camera keeps running.
 - **Custom backgrounds:** put any picture behind you; when you vanish, the picture is what remains.
-- **Works in calls:** virtual webcam for Teams, Zoom, Meet, and OBS, and a virtual microphone so the call hears the effect sounds (Linux).
+- **Works in calls:** virtual webcam for Teams, Discord, Zoom, Meet, and OBS, and a virtual microphone so the call hears the effect sounds (PipeWire on Linux, VB-CABLE on Windows).
 - **Remembers your choices** and starts with the last effect and background.
 - **Speaks your language:** the panel and messages are in English or Brazilian Portuguese, following your system.
 
