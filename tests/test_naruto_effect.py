@@ -281,7 +281,7 @@ class NarutoVideoLoopTests(unittest.TestCase):
             mocks.enter_context(patch.object(app.cv2, "resizeWindow"))
             mocks.enter_context(patch.object(app.cv2, "destroyAllWindows"))
             preview = panel.frames
-            mocks.enter_context(patch.object(app.cv2, "waitKey", side_effect=(0, 0, 0, 0, 0, ord("q"))))
+            mocks.enter_context(patch.object(app.cv2, "waitKeyEx", side_effect=(0, 0, 0, 0, 0, ord("q"))))
             mocks.enter_context(patch.object(app.cv2, "putText", side_effect=AssertionError("No text may be drawn over the video")))
             mocks.enter_context(patch("builtins.print"))
             self.assertEqual(app.run(), 0)

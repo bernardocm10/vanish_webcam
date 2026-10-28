@@ -353,7 +353,7 @@ class ReconnectLoopTests(unittest.TestCase):
             mocks.enter_context(patch.object(app.cv2, "resizeWindow"))
             mocks.enter_context(patch.object(app.cv2, "destroyAllWindows"))
             displayed = panel.frames
-            mocks.enter_context(patch.object(app.cv2, "waitKey", side_effect=wait_key))
+            mocks.enter_context(patch.object(app.cv2, "waitKeyEx", side_effect=wait_key))
             printed = mocks.enter_context(patch("builtins.print"))
             self.assertEqual(app.run(), 0)
 

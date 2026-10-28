@@ -12,6 +12,7 @@ from vanishcam.effects.ash import (
 )
 from vanishcam.control_panel import MODE_CARDS
 from vanishcam.effects.goku import CHEEK_LEFT, CHEEK_RIGHT, FOREHEAD_TOP, NOSE_BRIDGE
+from vanishcam.shortcuts import Shortcuts
 from vanishcam.modes import MODES, AshMode, FrameInfo
 
 HEIGHT, WIDTH = 180, 320
@@ -139,7 +140,7 @@ class AshModeTests(unittest.TestCase):
     def test_registered_with_a_panel_row_and_a_pose_detector(self):
         self.assertIs(MODES["ash"], AshMode)
         self.assertEqual(MODE_CARDS[-1].key, "ash")
-        self.assertEqual(app.KEY_ACTIONS[ord("5")], ("mode", "ash"))
+        self.assertEqual(Shortcuts().with_enabled(True).action_for(ord("5")), ("mode", "ash"))
         recognizer, image = Mock(), object()
         self.assertIs(AshMode.detect(recognizer, image, 0), recognizer.recognize_pose.return_value)
         recognizer.recognize_pose.assert_called_once_with(image, 0)

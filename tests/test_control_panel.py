@@ -17,7 +17,7 @@ from vanishcam.control_panel import (
     ADD_TILE, AMBER, MODE_CARDS, STAGE, WIDTH, ControlPanel, PanelRenderer, PanelView, fit_into, hit, panel_height,
     tiles,
 )
-from .test_video_output import InlineRecognizer, app_mocks, arguments, video_clock
+from .test_video_output import TEST_SHORTCUTS, InlineRecognizer, app_mocks, arguments, video_clock
 from vanishcam.i18n import t
 from vanishcam.modes import MODES
 from vanishcam.shortcuts import Shortcuts
@@ -96,7 +96,7 @@ class PanelRendererTests(unittest.TestCase):
         self.assertEqual(list(MODES), order)
         self.assertEqual([card.key for card in MODE_CARDS], order)
         for number, name in enumerate(order, start=1):
-            self.assertEqual(app.KEY_ACTIONS[ord(str(number))], ("mode", name))
+            self.assertEqual(Shortcuts().with_enabled(True).action_for(ord(str(number))), ("mode", name))
 
     def setUp(self):
         self.folder = Path(self.enterContext(tempfile.TemporaryDirectory()))
@@ -352,7 +352,7 @@ class LiveSwitchTests(unittest.TestCase):
                 app.cv2, "getWindowProperty", return_value=1.0 if video_window_open else 0.0,
             ))
             displayed = panel.frames
-            mocks.enter_context(patch.object(app.cv2, "waitKey", side_effect=keys))
+            mocks.enter_context(patch.object(app.cv2, "waitKeyEx", side_effect=keys))
             mocks.enter_context(patch("builtins.print"))
             self.assertEqual(app.run(), 0)
             # The temporary folder disappears on exit: read what was saved right away.
@@ -420,7 +420,7 @@ class LiveSwitchTests(unittest.TestCase):
 
     def test_startup_uses_saved_mode_and_background(self):
         def setup(user_data):
-            user_data.save(Settings("particles", self.gallery_image(user_data)))
+            user_data.save(Settings("particles", self.gallery_image(user_data), shortcuts=TEST_SHORTCUTS))
 
         images, displayed, panel, _, _ = self.run_app(
             frames=3, args=arguments(virtual_camera=False, mode=None), setup=setup,
@@ -512,7 +512,7 @@ class LiveSwitchTests(unittest.TestCase):
 
     def test_detached_video_is_remembered_and_closing_its_window_attaches_it(self):
         def setup(user_data):
-            user_data.save(Settings(None, None, None, True))
+            user_data.save(Settings(None, None, None, True, TEST_SHORTCUTS))
 
         _, _, panel, _, _ = self.run_app(frames=3, setup=setup, video_window_open=False)
         # Started detached as saved; closing the video window did not quit the app.
