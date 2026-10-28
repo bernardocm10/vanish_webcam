@@ -216,6 +216,12 @@ def run_camera(args: argparse.Namespace, resources: ExitStack, mode_name: str | 
     def camera_name() -> str | None:
         return next((camera.name for camera in cameras if camera.index == camera_index), None)
 
+    shortcuts = saved.shortcuts
+
+    def save_settings(mode: str | None = None) -> None:
+        """Every preference at once: saving one must not drop the others."""
+        user_data.save(Settings(mode or effect.name, chosen, camera_name(), detached, shortcuts))
+
     chosen: Path | None = None
     background_source: np.ndarray | None = None  # Chosen picture, at its original resolution.
     if getattr(args, "background_image", None) is not None:
@@ -227,7 +233,7 @@ def run_camera(args: argparse.Namespace, resources: ExitStack, mode_name: str | 
             chosen = saved.background
         except RuntimeError as error:
             print(f"[VanishCam] {error}")
-    user_data.save(Settings(mode_name, chosen, camera_name(), detached))
+    save_settings(mode_name)
     gallery = tuple(user_data.gallery())
 
     download_models(MODES[mode_name].models)
@@ -292,7 +298,7 @@ def run_camera(args: argparse.Namespace, resources: ExitStack, mode_name: str | 
             except cv2.error:
                 pass  # Already closed by the user.
         panel.set_detached(enabled)
-        user_data.save(Settings(effect.name, chosen, camera_name(), detached))
+        save_settings()
 
     if detached:
         set_detached(True)
@@ -334,7 +340,7 @@ def run_camera(args: argparse.Namespace, resources: ExitStack, mode_name: str | 
             effect = EffectRuntime(previous, segment, mic)
             notify(t("loop.mode_failed", name=name, error=error), time.perf_counter())
             return
-        user_data.save(Settings(name, chosen, camera_name(), detached))
+        save_settings()
         print(f"[{effect.mode.title}] {effect.mode.instructions}")
 
     def reopen_camera(now: float) -> None:
@@ -353,7 +359,7 @@ def run_camera(args: argparse.Namespace, resources: ExitStack, mode_name: str | 
             return
         camera_index = index
         camera.reopen(open_capture)
-        user_data.save(Settings(effect.name, chosen, camera_name(), detached))
+        save_settings()
         notify(t("camera.switched", name=camera_name() or t("panel.camera_number", index=index)), now)
 
     def choose_background(path: Path | None, now: float) -> None:
@@ -376,7 +382,7 @@ def run_camera(args: argparse.Namespace, resources: ExitStack, mode_name: str | 
             state.phase = "running"
             background_samples.clear()
             effect.mode.reset()
-        user_data.save(Settings(effect.name, chosen, camera_name(), detached))
+        save_settings()
 
     def handle(action: tuple, now: float) -> None:
         nonlocal gallery, cameras

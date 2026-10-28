@@ -20,6 +20,7 @@ from vanishcam.control_panel import (
 from .test_video_output import InlineRecognizer, app_mocks, arguments, video_clock
 from vanishcam.i18n import t
 from vanishcam.modes import MODES
+from vanishcam.shortcuts import Shortcuts
 from vanishcam.user_data import MAX_GALLERY, Settings, UserData
 
 
@@ -41,6 +42,21 @@ class UserDataTests(unittest.TestCase):
         self.assertEqual(self.data.load(), Settings())
         self.data.settings_file.write_text("[1, 2]", encoding="utf-8")
         self.assertEqual(self.data.load(), Settings())
+
+    def test_shortcuts_are_saved_and_loaded(self):
+        custom = Shortcuts().with_enabled(True).rebind("quit", ord("q"))
+        self.data.save(Settings("goku", None, None, False, custom))
+        self.assertEqual(self.data.load().shortcuts, custom)
+
+    def test_old_or_broken_shortcuts_load_as_defaults(self):
+        self.data.root.mkdir(parents=True, exist_ok=True)
+        cases = (({}, False), ({"shortcuts": 7}, False), ({"shortcuts": {"enabled": True, "keys": "x"}}, True))
+        for shortcuts, enabled in cases:
+            with self.subTest(shortcuts):
+                self.data.settings_file.write_text(json.dumps({"mode": "naruto", **shortcuts}), encoding="utf-8")
+                loaded = self.data.load()
+                self.assertEqual(loaded.mode, "naruto")
+                self.assertEqual(loaded.shortcuts, Shortcuts(enabled))
 
     def test_round_trip_and_deleted_image_returns_to_real_background(self):
         image = write_image(self.folder / "praia.png")

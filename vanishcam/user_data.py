@@ -13,10 +13,11 @@ import shutil
 import subprocess
 import sys
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from .i18n import t
+from .shortcuts import Shortcuts
 
 IMAGE_SUFFIXES = (".jpg", ".jpeg", ".png", ".bmp", ".webp")
 MAX_GALLERY = 7
@@ -38,6 +39,7 @@ class Settings:
     background: Path | None = None
     camera: str | None = None  # By name: the numbers shift when a webcam is unplugged.
     detached: bool = False  # The video in its own window.
+    shortcuts: Shortcuts = field(default_factory=Shortcuts)
 
 
 class UserData:
@@ -64,7 +66,8 @@ class UserData:
             background = None
         camera = data.get("camera") if isinstance(data.get("camera"), str) else None
         detached = data.get("detached") is True
-        return Settings(mode, Path(background) if background else None, camera, detached)
+        shortcuts = Shortcuts.from_json(data.get("shortcuts"))
+        return Settings(mode, Path(background) if background else None, camera, detached, shortcuts)
 
     def save(self, settings: Settings) -> None:
         data = {
@@ -72,6 +75,7 @@ class UserData:
             "background": str(settings.background) if settings.background else None,
             "camera": settings.camera,
             "detached": settings.detached,
+            "shortcuts": settings.shortcuts.to_json(),
         }
         try:
             self.root.mkdir(parents=True, exist_ok=True)
