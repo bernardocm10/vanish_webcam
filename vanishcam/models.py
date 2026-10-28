@@ -28,11 +28,14 @@ MODEL_URLS = {
 }
 
 
-def download_models(models: tuple[Path, ...] = ()) -> None:
-    """The segmenter, plus the models an effect declares (the versioned ones are already here)."""
+def download_models(models: tuple[Path, ...] | None = None) -> None:
+    """The segmenter, plus the models an effect declares (the versioned ones are already here).
+
+    None downloads every model, as the EXE build needs.
+    """
     MODEL_DIR.mkdir(parents=True, exist_ok=True)
     for destination, url in MODEL_URLS.items():
-        if destination != SEGMENTER_MODEL and destination not in models:
+        if models is not None and destination != SEGMENTER_MODEL and destination not in models:
             continue
         if destination.exists() and destination.stat().st_size > 100_000:
             continue

@@ -28,13 +28,20 @@ class DownloadModelsTests(unittest.TestCase):
             mocks.enter_context(patch("builtins.print"))
             # The declared paths are the real ones: map them onto the temporary files.
             renamed = {GESTURE_MODEL: gesture}
-            models.download_models(tuple(renamed.get(path, path) for path in declared))
+            if declared is None:
+                models.download_models()
+            else:
+                models.download_models(tuple(renamed.get(path, path) for path in declared))
             return [call.args[0].full_url for call in opened.call_args_list]
 
     def test_segmenter_always_and_only_the_declared_models(self):
         self.assertEqual(self.requested(()), ["https://seg"])
         self.assertEqual(self.requested((GESTURE_MODEL,)), ["https://seg", "https://gesture"])
         self.assertEqual(self.requested((HAND_MODEL, FACE_MODEL)), ["https://seg"])
+
+    def test_no_argument_downloads_every_model_for_the_exe_build(self):
+        # release.yml and build.bat call download_models() before bundling all the models.
+        self.assertEqual(self.requested(None), ["https://seg", "https://gesture"])
 
     def test_every_effect_declares_its_models(self):
         self.assertEqual(MODES["normal"].models, (GESTURE_MODEL,))
