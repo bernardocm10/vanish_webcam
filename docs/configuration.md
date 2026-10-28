@@ -18,7 +18,7 @@ Pass them after the start command, for example `.venv/bin/python -m vanishcam --
 | `--call-audio` | Send your voice plus the effect sounds to the call: **VanishCam Mic** on Linux (PipeWire), **CABLE Output** on Windows ([VB-CABLE](calls.md#windows-call-microphone-with-vb-cable)) |
 | `--no-mirror` | Do not mirror the video |
 | `--fullscreen` | Start in fullscreen, with only the video |
-| `--video-window` | Also open the clean video in its own **VanishCam - Video** window, for OBS's window capture |
+| `--video-window` | Start with the video detached in its own **VanishCam - Video** window (`D` or **DETACH** in the panel does the same) |
 | `--static-background` | Keep the captured background as it is instead of updating it |
 | `--gesture-debug` | Print gesture recognition details in the terminal |
 | `--lang en\|pt` | Interface language (default: the system language) |

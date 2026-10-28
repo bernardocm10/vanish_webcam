@@ -35,6 +35,7 @@ It follows your system language (see [Language](configuration.md#language)). Thi
 - Click the name to pick another webcam. The list is read again each time it opens, so a webcam plugged in meanwhile shows up. Virtual cameras (OBS Virtual Camera and the like) are left out: they are outputs, and reading one back would loop the video.
 - **REOPEN** (*REABRIR*) lets the webcam go and opens it again, without stopping the app: it fixes most frozen or black images.
 - **SETTINGS** (*AJUSTES*) opens the webcam driver's own settings window (exposure, focus, white balance). Windows only.
+- **DETACH** (*DESTACAR*, `D`) moves the video to its own **VanishCam - Video** window, for a second monitor or OBS's window capture, and the panel shrinks to its own width. **ATTACH** (*ACOPLAR*), `D` again, or closing the video window brings it back. The app remembers where you left it.
 
 **D · Controls** (*Controles*) — the same actions as the keyboard: **VANISH** (*SUMIR*, `V`), **REAPPEAR** (*REAPARECER*, `R`), **NEW BACKGROUND** (*NOVO FUNDO*, `SPACE`), **FULLSCREEN** (*TELA CHEIA*, `F`). Keys that do not apply right now are greyed out.
 
@@ -68,7 +69,8 @@ They work anywhere in the window:
 | `V` | Vanish now, without the gesture |
 | `R` | Reappear |
 | `SPACE` | Capture a new real background |
-| `F` | Fullscreen with only the video; again (or `ESC`) to bring the panel back |
+| `F` | Fullscreen with only the video (in its own window when detached); again, or `ESC`, to leave |
+| `D` | Detach the video to its own window, or attach it back |
 | `Q` or `ESC` | Quit and release the camera (`ESC` leaves fullscreen first) |
 
 `V` and `R` are disabled in Goku mode. Closing the window also quits the app.

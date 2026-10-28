@@ -4,7 +4,7 @@ import time
 import unittest
 from contextlib import ExitStack
 from pathlib import Path
-from unittest.mock import Mock, patch
+from unittest.mock import ANY, Mock, patch
 
 import cv2
 import numpy as np
@@ -113,6 +113,10 @@ class PanelRendererTests(unittest.TestCase):
         alone = self.actions(self.regions(PanelView("normal", "", camera_index=1), menu="camera"))
         self.assertEqual([a for a in alone if a[0] == "camera"], [("camera", 1)])
 
+    def test_detach_button_follows_where_the_video_is(self):
+        for detached in (False, True):
+            self.assertIn(("detach",), self.actions(self.regions(PanelView("normal", "", detached=detached))))
+
     def test_camera_settings_only_when_available_and_live(self):
         for view in (PanelView("normal", "", can_adjust=False),
                      PanelView("normal", "", can_adjust=True, camera_state="opening")):
@@ -208,6 +212,19 @@ class ControlPanelWindowTests(unittest.TestCase):
         np.testing.assert_array_equal(shown[: panel.shape[0], :WIDTH], panel)
         self.assertTrue((shown[self.SIZE[1] // 2, WIDTH + 10 : -10] == 200).all())
 
+    def test_detached_window_holds_only_the_panel(self):
+        view = PanelView("normal", "Pronto", detached=True)
+        self.panel.show(view, self.video)
+        self.panel.set_detached(True)
+        self.panel.show(view, None)
+        shown = self.imshow.call_args.args[1]
+        self.assertEqual(shown.shape, (panel_height(view), WIDTH, 3))
+        control_panel.cv2.resizeWindow.assert_called_with(self.panel.title, WIDTH, panel_height(view))
+        # Widened by hand while detached: faceplate beside the panel, no video.
+        self.panel.show(view, None)
+        shown = self.imshow.call_args.args[1]
+        self.assertTrue((shown[:, WIDTH:] == control_panel.FACE[::-1]).all())
+
     def test_effect_menu_opens_then_picks(self):
         self.panel.show(PanelView("normal", "Pronto"), self.video)
         self.click(("menu", "mode"))
@@ -268,7 +285,7 @@ class ControlPanelWindowTests(unittest.TestCase):
 class LiveSwitchTests(unittest.TestCase):
     """Effect and background change while camera, segmenter and virtual camera stay open."""
 
-    def run_app(self, actions=(), frames=6, args=None, setup=None, keys=None, cameras=()):
+    def run_app(self, actions=(), frames=6, args=None, setup=None, keys=None, cameras=(), video_window_open=True):
         capture = Mock()
         images = [np.full((24, 40, 3), 100 + 10 * i, np.uint8) for i in range(frames)]
         read, clock = video_clock(images, (0.0, 4.1) + tuple(4.3 + 0.2 * i for i in range(frames - 2)))
@@ -294,8 +311,12 @@ class LiveSwitchTests(unittest.TestCase):
             mocks.enter_context(patch.object(detectors, "recognize_gesture", return_value=("No_Hand", 0.0)))
             mocks.enter_context(patch.object(app, "AsyncRecognizer", InlineRecognizer))
             mocks.enter_context(patch.object(app.time, "perf_counter", side_effect=clock))
-            for name in ("namedWindow", "resizeWindow", "destroyAllWindows"):
-                mocks.enter_context(patch.object(app.cv2, name))
+            # The detached video window: created, shown and closed through cv2.
+            self.windows = {name: mocks.enter_context(patch.object(app.cv2, name))
+                            for name in ("namedWindow", "resizeWindow", "destroyAllWindows", "destroyWindow", "imshow")}
+            self.windows["getWindowProperty"] = mocks.enter_context(patch.object(
+                app.cv2, "getWindowProperty", return_value=1.0 if video_window_open else 0.0,
+            ))
             displayed = panel.frames
             mocks.enter_context(patch.object(app.cv2, "waitKey", side_effect=keys))
             mocks.enter_context(patch("builtins.print"))
@@ -421,11 +442,40 @@ class LiveSwitchTests(unittest.TestCase):
         self.assertEqual(panel.fullscreen, [True, False])
         self.assertEqual(len(panel.views), 4)  # Still running after Esc, until Q.
 
-    def test_settings_remember_the_camera(self):
+    def test_settings_remember_the_camera_and_the_detached_video(self):
         folder = Path(self.enterContext(tempfile.TemporaryDirectory()))
         data = UserData(folder)
-        data.save(Settings("goku", None, "Logitech C920"))
-        self.assertEqual(data.load(), Settings("goku", None, "Logitech C920"))
+        data.save(Settings("goku", None, "Logitech C920", True))
+        self.assertEqual(data.load(), Settings("goku", None, "Logitech C920", True))
+
+    def video_window_frames(self):
+        return [call.args[1] for call in self.windows["imshow"].call_args_list if call.args[0] == app.WINDOW_NAME]
+
+    def test_detach_moves_the_video_to_its_own_window_and_back(self):
+        images, displayed, panel, _, _ = self.run_app([[], [("detach",)], [], [("detach",)]], frames=5)
+        self.assertEqual(panel.detached, [True, False])
+        self.windows["namedWindow"].assert_any_call(app.WINDOW_NAME, ANY)
+        self.windows["destroyWindow"].assert_called_once_with(app.WINDOW_NAME)
+        # Frames 2 and 3 went to the video window too; the panel always gets them.
+        self.assertEqual(len(self.video_window_frames()), 2)
+        np.testing.assert_array_equal(self.video_window_frames()[0], displayed[2])
+        self.assertEqual([view.detached for view in panel.views], [False, False, True, True, False])
+        self.assertFalse(self.saved.detached)
+
+    def test_detached_video_is_remembered_and_closing_its_window_attaches_it(self):
+        def setup(user_data):
+            user_data.save(Settings(None, None, None, True))
+
+        _, _, panel, _, _ = self.run_app(frames=3, setup=setup, video_window_open=False)
+        # Started detached as saved; closing the video window did not quit the app.
+        self.assertEqual(panel.detached, [True, False])
+        self.assertEqual(len(panel.views), 3)
+        self.assertFalse(self.saved.detached)
+
+    def test_d_key_detaches(self):
+        _, _, panel, _, _ = self.run_app(frames=3, keys=[ord("d"), 0])
+        self.assertEqual(panel.detached, [True])
+        self.assertTrue(self.saved.detached)
 
 
 if __name__ == "__main__":

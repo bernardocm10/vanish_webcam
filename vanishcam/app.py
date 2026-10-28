@@ -49,6 +49,13 @@ class AppState:
     fullscreen: bool = False
 
 
+def window_visible(name: str) -> bool:
+    try:
+        return cv2.getWindowProperty(name, cv2.WND_PROP_VISIBLE) >= 1
+    except cv2.error:
+        return False
+
+
 def set_fullscreen(enabled: bool) -> None:
     mode = cv2.WINDOW_FULLSCREEN if enabled else cv2.WINDOW_NORMAL
     cv2.setWindowProperty(WINDOW_NAME, cv2.WND_PROP_FULLSCREEN, mode)
@@ -151,6 +158,7 @@ KEY_ACTIONS = {
     ord("r"): ("reappear",),
     ord("v"): ("vanish",),
     ord("f"): ("fullscreen",),
+    ord("d"): ("detach",),
     **{ord(str(number)): ("mode", card.key) for number, card in enumerate(MODE_CARDS, start=1)},
 }
 MESSAGE_SECONDS = 6.0
@@ -184,10 +192,12 @@ def run_camera(args: argparse.Namespace, resources: ExitStack, mode_name: str | 
     mode_name = mode_name or (saved.mode if saved.mode in MODES else "normal")
     cameras = list_cameras()
     camera_index = choose_camera(getattr(args, "camera", None), saved.camera, cameras)
-    video_window = getattr(args, "video_window", False)
+    # The video in its own window: asked for on the command line, or how it was left last time.
+    detached = bool(getattr(args, "video_window", False) or saved.detached)
 
     def camera_name() -> str | None:
         return next((camera.name for camera in cameras if camera.index == camera_index), None)
+
     chosen: Path | None = None
     background_source: np.ndarray | None = None  # Chosen picture, at its original resolution.
     if getattr(args, "background_image", None) is not None:
@@ -199,7 +209,7 @@ def run_camera(args: argparse.Namespace, resources: ExitStack, mode_name: str | 
             chosen = saved.background
         except RuntimeError as error:
             print(f"[VanishCam] {error}")
-    user_data.save(Settings(mode_name, chosen, camera_name()))
+    user_data.save(Settings(mode_name, chosen, camera_name(), detached))
     gallery = tuple(user_data.gallery())
 
     download_models(mode_name)
@@ -220,23 +230,17 @@ def run_camera(args: argparse.Namespace, resources: ExitStack, mode_name: str | 
     # Closes whichever effect is active at that point, also after a mode switch.
     resources.callback(lambda: effect.close())
     resources.callback(cv2.destroyAllWindows)
-    if video_window:
-        # The clean video on its own, for OBS's window capture. GUI_NORMAL: without the Qt toolbar.
-        cv2.namedWindow(WINDOW_NAME, cv2.WINDOW_NORMAL | cv2.WINDOW_KEEPRATIO | cv2.WINDOW_GUI_NORMAL)
-        cv2.resizeWindow(WINDOW_NAME, args.width, args.height)
     panel = ControlPanel()
     resources.callback(panel.close)
 
     def apply_fullscreen(enabled: bool) -> None:
-        # With its own window the video goes fullscreen there; otherwise the app window shows only the video.
-        if video_window:
+        # Detached, the video goes fullscreen in its own window; otherwise the app window shows only the video.
+        if detached:
             set_fullscreen(enabled)
         else:
             panel.set_fullscreen(enabled)
 
     state = AppState(calibration_started=time.perf_counter(), fullscreen=args.fullscreen)
-    if state.fullscreen:
-        apply_fullscreen(True)
 
     background: np.ndarray | None = None
     real_background: np.ndarray | None = None  # Last real background: switching back needs no recalibration.
@@ -249,6 +253,30 @@ def run_camera(args: argparse.Namespace, resources: ExitStack, mode_name: str | 
     camera_detail, camera_detail_at = "", float("-inf")
     started = state.calibration_started
     width = height = 0
+
+    def set_detached(enabled: bool) -> None:
+        """Move the video to its own window (a second monitor, OBS's window capture) or back beside the panel."""
+        nonlocal detached
+        if state.fullscreen:
+            state.fullscreen = False
+            apply_fullscreen(False)
+        detached = enabled
+        if enabled:
+            # GUI_NORMAL: just the video, without the Qt toolbar.
+            cv2.namedWindow(WINDOW_NAME, cv2.WINDOW_NORMAL | cv2.WINDOW_KEEPRATIO | cv2.WINDOW_GUI_NORMAL)
+            cv2.resizeWindow(WINDOW_NAME, width or args.width, height or args.height)
+        else:
+            try:
+                cv2.destroyWindow(WINDOW_NAME)
+            except cv2.error:
+                pass  # Already closed by the user.
+        panel.set_detached(enabled)
+        user_data.save(Settings(effect.name, chosen, camera_name(), detached))
+
+    if detached:
+        set_detached(True)
+    if state.fullscreen:
+        apply_fullscreen(True)
     if background_source is None:
         print(f"[VanishCam] {t('loop.step_out')}")
     else:
@@ -285,7 +313,7 @@ def run_camera(args: argparse.Namespace, resources: ExitStack, mode_name: str | 
             effect = EffectRuntime(previous, segment, mic)
             notify(t("loop.mode_failed", name=name, error=error), time.perf_counter())
             return
-        user_data.save(Settings(name, chosen, camera_name()))
+        user_data.save(Settings(name, chosen, camera_name(), detached))
         print(f"[{effect.mode.title}] {effect.mode.instructions}")
 
     def switch_camera(index: int, now: float) -> None:
@@ -294,7 +322,7 @@ def run_camera(args: argparse.Namespace, resources: ExitStack, mode_name: str | 
             return
         camera_index = index
         camera.reopen(open_capture)
-        user_data.save(Settings(effect.name, chosen, camera_name()))
+        user_data.save(Settings(effect.name, chosen, camera_name(), detached))
         notify(t("camera.switched", name=camera_name() or t("panel.camera_number", index=index)), now)
 
     def choose_background(path: Path | None, now: float) -> None:
@@ -317,7 +345,7 @@ def run_camera(args: argparse.Namespace, resources: ExitStack, mode_name: str | 
             state.phase = "running"
             background_samples.clear()
             effect.mode.reset()
-        user_data.save(Settings(effect.name, chosen, camera_name()))
+        user_data.save(Settings(effect.name, chosen, camera_name(), detached))
 
     def handle(action: tuple, now: float) -> None:
         nonlocal gallery, cameras
@@ -360,6 +388,8 @@ def run_camera(args: argparse.Namespace, resources: ExitStack, mode_name: str | 
             camera.reopen()
         elif kind == "camera_settings" and not camera.open_settings():
             notify(t("camera.settings_unavailable"), now)
+        elif kind == "detach":
+            set_detached(not detached)
 
     card_base: np.ndarray | None = None  # Last image sent, dimmed: background of the reconnecting card.
     card: tuple[tuple[int, bool], np.ndarray] | None = None
@@ -401,7 +431,7 @@ def run_camera(args: argparse.Namespace, resources: ExitStack, mode_name: str | 
                     # The webcam may not support the requested resolution: fit the
                     # window to the real one, without stretching the image.
                     print(f"[VanishCam] {t('camera.resolution', width=width, height=height)}")
-                    if video_window and (width, height) != (args.width, args.height):
+                    if detached and (width, height) != (args.width, args.height):
                         cv2.resizeWindow(WINDOW_NAME, width, height)
                     virtual_camera = open_virtual_camera(args, width, height)
                     virtual_camera_initialized = True
@@ -472,7 +502,7 @@ def run_camera(args: argparse.Namespace, resources: ExitStack, mode_name: str | 
 
             if virtual_camera is not None:
                 send_virtual_frame(virtual_camera, display)
-            if video_window:
+            if detached:
                 cv2.imshow(WINDOW_NAME, display)
             if now - camera_detail_at >= 1.0 and camera.frame_size is not None:
                 # Once a second: a steadier number, and the panel is not redrawn every frame.
@@ -487,7 +517,7 @@ def run_camera(args: argparse.Namespace, resources: ExitStack, mode_name: str | 
                 fullscreen=state.fullscreen, message=message if now < message_until else "",
                 cameras=cameras, camera_index=camera_index, camera_detail=camera_detail,
                 camera_state=("opening" if camera.opening else "reconnecting") if camera.reconnecting else "live",
-                can_adjust=platform.system() == "Windows",
+                can_adjust=platform.system() == "Windows", detached=detached,
             ), display)
 
             key = cv2.waitKey(1) & 0xFF
@@ -496,6 +526,9 @@ def run_camera(args: argparse.Namespace, resources: ExitStack, mode_name: str | 
                 key = ord("f")
             elif key in (ord("q"), 27) or panel.closed:
                 break
+            if detached and not window_visible(WINDOW_NAME):
+                # Closing the video window brings the video back beside the panel; only the panel quits.
+                set_detached(False)
             actions = panel.poll()
             if key in KEY_ACTIONS:
                 actions.append(KEY_ACTIONS[key])

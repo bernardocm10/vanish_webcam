@@ -98,6 +98,7 @@ class PanelView:
     camera_state: str = "live"  # live | opening | reconnecting
     camera_detail: str = ""
     can_adjust: bool = False
+    detached: bool = False  # The video in its own window instead of beside the panel.
 
     @property
     def camera_name(self) -> str:
@@ -418,10 +419,16 @@ class PanelRenderer:
         }.get(view.camera_state, view.camera_detail)
         text((PAD + 30, y + CAMERA_HEIGHT + 11), detail, 10, AMBER if view.camera_state != "live" else GREY, "mono-bold", "lm", spacing=0.6)
         y += CAMERA_HEIGHT + 24
+        third = (WIDTH - 2 * PAD - 2 * TILE_GAP) / 3
+        camera_keys = (
+            (t("panel.reopen"), "", ("reopen_camera",), True),
+            (t("panel.camera_settings"), "", ("camera_settings",), view.can_adjust and view.camera_state == "live"),
+            (t("panel.attach" if view.detached else "panel.detach"), "D", ("detach",), True),
+        )
+        for column, (label, legend, action, enabled) in enumerate(camera_keys):
+            x0 = PAD + column * (third + TILE_GAP)
+            key((x0, y, x0 + third, y + KEY_HEIGHT), label, legend, action, enabled)
         half = (WIDTH - 2 * PAD - TILE_GAP) / 2
-        key((PAD, y, PAD + half, y + KEY_HEIGHT), t("panel.reopen"), "", ("reopen_camera",))
-        key((PAD + half + TILE_GAP, y, WIDTH - PAD, y + KEY_HEIGHT), t("panel.camera_settings"), "",
-            ("camera_settings",), view.can_adjust and view.camera_state == "live")
 
         # D · Controls.
         y = spots.controls
@@ -493,7 +500,7 @@ class ControlPanel:
 
     Actions are tuples: ("mode", key), ("background", Path | None), ("remove", Path),
     ("import", Path), ("error", text), ("vanish",), ("reappear",), ("recapture",),
-    ("fullscreen",), ("camera", index), ("reopen_camera",), ("camera_settings",),
+    ("fullscreen",), ("camera", index), ("reopen_camera",), ("camera_settings",), ("detach",),
     and ("cameras",) when the camera menu opens, to list the webcams again.
     """
 
@@ -508,6 +515,7 @@ class ControlPanel:
         self.menu: str | None = None
         self.fullscreen = False
         self.fullscreen_since = 0.0
+        self.detached = False
         self.drawn = None
         self.panel: np.ndarray | None = None
         self.size: tuple[int, int] | None = None
@@ -533,10 +541,18 @@ class ControlPanel:
         mode = cv2.WINDOW_FULLSCREEN if enabled else cv2.WINDOW_NORMAL
         cv2.setWindowProperty(self.title, cv2.WND_PROP_FULLSCREEN, mode)
 
+    def set_detached(self, enabled: bool) -> None:
+        """With the video in its own window this one shrinks to just the panel; attached, it grows back."""
+        self.detached = enabled
+        self.size = None  # Resized to fit on the next frame.
+
     def _window_size(self, panel_height: int) -> tuple[int, int]:
         if self.size is None:
-            # First frame: room for the panel and a 16:9 video beside it.
-            self.size = (WIDTH + VIDEO_WIDTH, max(panel_height, VIDEO_WIDTH * 9 // 16))
+            # Room for the panel, and for a 16:9 video beside it unless the video has its own window.
+            if self.detached:
+                self.size = (WIDTH, panel_height)
+            else:
+                self.size = (WIDTH + VIDEO_WIDTH, max(panel_height, VIDEO_WIDTH * 9 // 16))
             cv2.resizeWindow(self.title, *self.size)
             return self.size
         try:
@@ -569,7 +585,7 @@ class ControlPanel:
             canvas[:, :columns] = FACE[::-1]  # Below the panel, when the window is taller.
             canvas[:rows, :columns] = panel[:rows, :columns]
             if width > WIDTH:
-                canvas[:, WIDTH:] = fit_into(video, width - WIDTH, height)
+                canvas[:, WIDTH:] = FACE[::-1] if self.detached else fit_into(video, width - WIDTH, height)
         cv2.imshow(self.title, canvas)
 
     def poll(self) -> list[tuple]:

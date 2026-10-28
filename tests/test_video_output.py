@@ -50,7 +50,7 @@ class FakePanel:
     def __init__(self, actions=()):
         self.actions = list(actions)
         self.views, self.frames, self.real_backgrounds = [], [], []
-        self.fullscreen = []
+        self.fullscreen, self.detached = [], []
         self.closed = False
 
     def show(self, view, video=None):
@@ -60,6 +60,9 @@ class FakePanel:
 
     def set_fullscreen(self, enabled):
         self.fullscreen.append(enabled)
+
+    def set_detached(self, enabled):
+        self.detached.append(enabled)
 
     def poll(self):
         # An action can be a function of the panel: useful when it depends on what already happened.
