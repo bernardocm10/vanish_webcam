@@ -8,6 +8,7 @@ draws each frame. To add an effect, subclass Mode and register it in MODES.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Callable
 
 import cv2
@@ -31,6 +32,7 @@ from .effects.particles import (
     render_particles,
 )
 from .i18n import t
+from .models import FACE_MODEL, GESTURE_MODEL, HAND_MODEL
 
 # BGR frame, timestamp in ms -> person mask (0..1) at full resolution.
 Segment = Callable[[np.ndarray, int], np.ndarray]
@@ -48,6 +50,8 @@ class Mode:
     """Phases: ready -> vanishing -> vanished (-> appearing -> ready, Goku only)."""
 
     name = ""
+    # MediaPipe models the detector needs, besides the segmenter.
+    models: tuple[Path, ...] = ()
     detect_interval = 0.14
     # V and R work from the keyboard; Goku turns them off: only the gesture counts.
     manual_keys = True
@@ -110,6 +114,7 @@ class VSignMode(Mode):
 
 class NormalMode(VSignMode):
     name = "normal"
+    models = (GESTURE_MODEL,)
 
     def __init__(self, segment: Segment, sound=None):
         super().__init__(segment, sound)
@@ -151,6 +156,7 @@ def half_resolution_rgb(frame: np.ndarray) -> np.ndarray:
 
 class ParticlesMode(Mode):
     name = "particles"
+    models = (HAND_MODEL, FACE_MODEL)
     detect_interval = 0.066
 
     def __init__(self, segment: Segment, sound=None):
@@ -233,6 +239,7 @@ class AshMode(ParticlesMode):
 
 class NarutoMode(Mode):
     name = "naruto"
+    models = (HAND_MODEL,)
     detect_interval = 0.08
 
     def __init__(self, segment: Segment, sound=None):
@@ -290,6 +297,7 @@ class NarutoMode(Mode):
 
 class GokuMode(Mode):
     name = "goku"
+    models = (HAND_MODEL, FACE_MODEL)
     detect_interval = 0.066
     manual_keys = False
     detect_while_vanished = True

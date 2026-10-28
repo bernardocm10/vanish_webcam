@@ -139,7 +139,7 @@ class EffectRuntime:
     """
 
     def __init__(self, name: str, segment: PersonSegmenter, mic: VirtualMic | None):
-        download_models(name)
+        download_models(MODES[name].models)
         self.name = name
         self.recognizer = create_recognizer(name)
         self.detector = AsyncRecognizer(detection_function(name, self.recognizer), self.recognizer.close)
@@ -225,7 +225,7 @@ def run_camera(args: argparse.Namespace, resources: ExitStack, mode_name: str | 
     user_data.save(Settings(mode_name, chosen, camera_name(), detached))
     gallery = tuple(user_data.gallery())
 
-    download_models(mode_name)
+    download_models(MODES[mode_name].models)
 
     def open_capture() -> cv2.VideoCapture:
         # Reads camera_index when called: reopening after a switch opens the new webcam.
