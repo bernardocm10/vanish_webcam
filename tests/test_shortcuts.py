@@ -46,8 +46,18 @@ class ShortcutsTests(unittest.TestCase):
         self.assertEqual(Shortcuts.from_json({"enabled": "yes"}), Shortcuts())
         broken = Shortcuts.from_json({"enabled": True, "keys": {"vanish": 0xFFE1, "nonsense": 120}})
         self.assertEqual(broken.key_for("vanish"), ord("v"))
-        clash = Shortcuts.from_json({"enabled": True, "keys": {"vanish": ord("r")}})
+        # The same key saved for two actions: a hand-edited file, back to the defaults.
+        clash = Shortcuts.from_json({"enabled": True, "keys": {"vanish": ord("r"), "reappear": ord("r")}})
         self.assertEqual(clash, Shortcuts().with_enabled(True))
+
+    def test_a_default_never_takes_a_saved_key(self):
+        # Saved before an action existed (a new effect): its default key is already one of the owner's.
+        saved = {"vanish": ord("x"), "quit": ord("5")}
+        loaded = Shortcuts.from_json({"enabled": True, "keys": saved})
+        self.assertEqual(loaded.key_for("vanish"), ord("x"))
+        self.assertEqual(loaded.key_for("quit"), ord("5"))
+        self.assertIsNone(loaded.key_for("mode.ash"))  # Its default 5 was taken: no key, not a reset.
+        self.assertEqual(loaded.key_for("reappear"), ord("r"))
 
 
 if __name__ == "__main__":

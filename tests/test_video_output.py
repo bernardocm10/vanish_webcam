@@ -313,7 +313,7 @@ class PersonSegmenterTests(unittest.TestCase):
 
 
 class ShortcutKeysTests(unittest.TestCase):
-    def run_keys(self, keys, shortcuts):
+    def run_keys(self, keys, shortcuts, fullscreen=False):
         """The app on a picture background, one key press per frame; the window closes after the last."""
         keys = list(keys)
         capture = Mock()
@@ -323,7 +323,7 @@ class ShortcutKeysTests(unittest.TestCase):
         mask = np.zeros((24, 40), np.float32)
         mask[:, :20] = 1.0  # Person on the left.
         with ExitStack() as mocks:
-            args = arguments(virtual_camera=False, background_image="beach.png")
+            args = arguments(virtual_camera=False, background_image="beach.png", fullscreen=fullscreen)
             mocks.enter_context(patch.object(app, "parse_args", return_value=args))
             mocks.enter_context(patch.object(app, "download_models"))
             mocks.enter_context(patch.object(app, "open_camera", return_value=capture))
@@ -363,6 +363,13 @@ class ShortcutKeysTests(unittest.TestCase):
             with self.subTest(escape):
                 panel = self.run_keys([ord("f"), escape, escape, 0, 0], Shortcuts().with_enabled(True))
                 self.assertEqual(panel.fullscreen, [True, False])
+
+    def test_escape_leaves_fullscreen_with_shortcuts_off(self):
+        # The default: no shortcuts, started fullscreen, no panel to click. ESC is the way out.
+        for escape in (27, 0xFF1B):
+            with self.subTest(escape):
+                panel = self.run_keys([0, escape, 0], Shortcuts(), fullscreen=True)
+                self.assertEqual(panel.fullscreen[-1], False)
 
 
 if __name__ == "__main__":

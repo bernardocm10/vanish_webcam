@@ -463,6 +463,16 @@ class LiveSwitchTests(unittest.TestCase):
         self.assertEqual(saved.shortcuts.key_for("vanish"), ord("x"))
         self.assertIsNone(self.panel.capturing)
 
+    def test_turning_shortcuts_off_cancels_a_capture(self):
+        script = [[], [lambda panel: setattr(panel, "capturing", "vanish") or ("none",)],
+                  [("shortcuts_enabled", False)], [], [lambda panel: setattr(panel, "closed", True) or ("none",)]]
+        _, _, panel, _, _ = self.run_app(
+            script, frames=6, keys=[0, 0, 0, ord("x"), 0],
+            setup=lambda data: data.save(Settings(shortcuts=Shortcuts().with_enabled(True))),
+        )
+        self.assertEqual(self.saved.shortcuts, Shortcuts())  # Off, and V still vanishes once turned on.
+        self.assertIsNone(panel.capturing)
+
     def test_restoring_the_defaults_is_saved(self):
         saved = self.run_with(actions=[("reset_shortcuts",)], shortcuts=TEST_SHORTCUTS)
         self.assertEqual(saved.shortcuts, Shortcuts().with_enabled(True))

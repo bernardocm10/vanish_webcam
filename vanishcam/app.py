@@ -442,9 +442,11 @@ def run_camera(args: argparse.Namespace, resources: ExitStack, mode_name: str | 
             state.quitting = True
         elif kind == "shortcuts_enabled":
             shortcuts = shortcuts.with_enabled(action[1])
+            panel.capturing = None  # A key typed next must not bind anything.
             save_settings()
         elif kind == "reset_shortcuts":
             shortcuts = shortcuts.reset()
+            panel.capturing = None
             save_settings()
 
     card_base: np.ndarray | None = None  # Last image sent, dimmed: background of the reconnecting card.

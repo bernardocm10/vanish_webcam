@@ -82,18 +82,23 @@ class Shortcuts:
 
     @classmethod
     def from_json(cls, data: object) -> Shortcuts:
-        """Anything missing or invalid falls back to its default; a clash, to all the defaults."""
+        """Anything missing or invalid falls back to its default, unless the owner saved that key
+        for another action (a new effect after an upgrade): then it has none. The same key saved
+        for two actions (a hand-edited file) puts back all the defaults."""
         if not isinstance(data, dict):
             return cls()
         enabled = data.get("enabled") is True
         saved = data.get("keys") if isinstance(data.get("keys"), dict) else {}
-        keys = []
-        for action, default in DEFAULT_KEYS.items():
-            code = saved.get(action, default)
-            if code is not None and (not isinstance(code, int) or isinstance(code, bool) or normalize(code) != code):
-                code = default
-            keys.append((action, code))
-        bound = [code for _, code in keys if code is not None]
-        if len(bound) != len(set(bound)):
+        chosen = {}
+        for action in DEFAULT_KEYS:
+            code = saved.get(action, ...)
+            if code is None or (isinstance(code, int) and not isinstance(code, bool) and normalize(code) == code):
+                chosen[action] = code
+        taken = [code for code in chosen.values() if code is not None]
+        if len(taken) != len(set(taken)):
             return cls(enabled)
-        return cls(enabled, tuple(keys))
+        keys = tuple(
+            (action, chosen[action] if action in chosen else None if default in taken else default)
+            for action, default in DEFAULT_KEYS.items()
+        )
+        return cls(enabled, keys)
