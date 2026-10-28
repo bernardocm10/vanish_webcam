@@ -2,9 +2,10 @@ import tempfile
 import unittest
 from contextlib import ExitStack
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, Mock, patch
 
-from vanishcam import models
+from vanishcam import detectors, models, modes
+from vanishcam.detectors import GokuPoseDetector, HandsUpPoseDetector, SalutePoseDetector
 from vanishcam.models import FACE_MODEL, GESTURE_MODEL, HAND_MODEL
 from vanishcam.modes import MODES
 
@@ -40,6 +41,29 @@ class DownloadModelsTests(unittest.TestCase):
         self.assertEqual(MODES["naruto"].models, (HAND_MODEL,))
         for name in ("goku", "particles", "ash"):
             self.assertEqual(MODES[name].models, (HAND_MODEL, FACE_MODEL))
+
+
+class RecognizerDeclarationTests(unittest.TestCase):
+    def test_each_effect_detects_with_its_own_method(self):
+        image = object()
+        with patch.object(detectors, "recognize_gesture", return_value=("Victory", 0.9)) as gesture:
+            recognizer = Mock()
+            self.assertEqual(MODES["normal"].detect(recognizer, image, 7), ("Victory", 0.9))
+            gesture.assert_called_once_with(recognizer, image, 7)
+        expected = {"naruto": "recognize_joined_hands", "goku": "recognize_pose",
+                    "particles": "recognize_pose", "ash": "recognize_pose"}
+        for name, method in expected.items():
+            with self.subTest(name):
+                recognizer = Mock()
+                self.assertIs(MODES[name].detect(recognizer, image, 7), getattr(recognizer, method).return_value)
+                getattr(recognizer, method).assert_called_once_with(image, 7)
+
+    def test_pose_effects_build_their_own_detector_class(self):
+        expected = {"goku": GokuPoseDetector, "particles": SalutePoseDetector, "ash": HandsUpPoseDetector}
+        for name, detector in expected.items():
+            with self.subTest(name), patch.object(modes, "create_pose_detector") as create:
+                MODES[name].create_recognizer()
+                create.assert_called_once_with(detector)
 
 
 if __name__ == "__main__":

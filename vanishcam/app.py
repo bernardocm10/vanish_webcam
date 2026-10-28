@@ -11,6 +11,7 @@ import sys
 import time
 from contextlib import ExitStack
 from dataclasses import dataclass
+from functools import partial
 from pathlib import Path
 
 import cv2
@@ -24,7 +25,7 @@ from .camera import (
 )
 from .cli import parse_args
 from .control_panel import ACCENTS, AMBER, FONT_DIR, FONTS, GREEN, MODE_CARDS, ControlPanel, PanelView
-from .detectors import AsyncRecognizer, create_recognizer, detection_function, detector_status
+from .detectors import AsyncRecognizer, detector_status
 from .effects.goku import SOUND_NAME as GOKU_SOUND_NAME, sound_path
 from .effects.naruto import load_log
 from .i18n import t
@@ -132,6 +133,10 @@ def open_sound(mode: str, mic: VirtualMic | None = None):
     return CallSound(sound, mic, path) if mic is not None else sound
 
 
+def create_recognizer(name: str):
+    return MODES[name].create_recognizer()
+
+
 class EffectRuntime:
     """Recognizer, sound and effect of one mode: switching mode replaces only this.
 
@@ -142,7 +147,7 @@ class EffectRuntime:
         download_models(MODES[name].models)
         self.name = name
         self.recognizer = create_recognizer(name)
-        self.detector = AsyncRecognizer(detection_function(name, self.recognizer), self.recognizer.close)
+        self.detector = AsyncRecognizer(partial(MODES[name].detect, self.recognizer), self.recognizer.close)
         try:
             self.sound = open_sound(name, mic)
         except Exception:

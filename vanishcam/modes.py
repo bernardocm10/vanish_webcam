@@ -12,7 +12,14 @@ from pathlib import Path
 from typing import Callable
 
 import cv2
+import mediapipe as mp
 import numpy as np
+
+from . import detectors
+from .detectors import (
+    GokuPoseDetector, HandsUpPoseDetector, SalutePoseDetector, create_gesture_recognizer, create_hand_landmarker,
+    create_pose_detector,
+)
 
 from .effects.ash import (
     EFFECT_SECONDS as ASH_EFFECT_SECONDS, HANDS_UP_HOLD_SECONDS, make_ash, render_ash, render_remains,
@@ -56,6 +63,16 @@ class Mode:
     # V and R work from the keyboard; Goku turns them off: only the gesture counts.
     manual_keys = True
     detect_while_vanished = False
+
+    @staticmethod
+    def create_recognizer():
+        """The recognizer this effect detects with, run off the video thread."""
+        raise NotImplementedError
+
+    @staticmethod
+    def detect(recognizer, image: mp.Image, timestamp_ms: int):
+        """One detection on the recognizer thread; the result goes to on_detection."""
+        raise NotImplementedError
 
     def __init__(self, segment: Segment, sound=None):
         self.segment = segment
@@ -115,6 +132,12 @@ class VSignMode(Mode):
 class NormalMode(VSignMode):
     name = "normal"
     models = (GESTURE_MODEL,)
+    create_recognizer = staticmethod(create_gesture_recognizer)
+
+    @staticmethod
+    def detect(recognizer, image: mp.Image, timestamp_ms: int):
+        # Looked up on every call (not bound here) so the tests can replace it.
+        return detectors.recognize_gesture(recognizer, image, timestamp_ms)
 
     def __init__(self, segment: Segment, sound=None):
         super().__init__(segment, sound)
@@ -157,6 +180,15 @@ def half_resolution_rgb(frame: np.ndarray) -> np.ndarray:
 class ParticlesMode(Mode):
     name = "particles"
     models = (HAND_MODEL, FACE_MODEL)
+    pose_detector: type[GokuPoseDetector] = SalutePoseDetector
+
+    @classmethod
+    def create_recognizer(cls):
+        return create_pose_detector(cls.pose_detector)
+
+    @staticmethod
+    def detect(recognizer, image: mp.Image, timestamp_ms: int):
+        return recognizer.recognize_pose(image, timestamp_ms)
     detect_interval = 0.066
 
     def __init__(self, segment: Segment, sound=None):
@@ -200,6 +232,7 @@ class AshMode(ParticlesMode):
     """Hands up: the silhouette turns to ash, crumbles, and the pile stays until R."""
 
     name = "ash"
+    pose_detector = HandsUpPoseDetector
 
     def __init__(self, segment: Segment, sound=None):
         super().__init__(segment, sound)
@@ -240,6 +273,11 @@ class AshMode(ParticlesMode):
 class NarutoMode(Mode):
     name = "naruto"
     models = (HAND_MODEL,)
+    create_recognizer = staticmethod(create_hand_landmarker)
+
+    @staticmethod
+    def detect(recognizer, image: mp.Image, timestamp_ms: int):
+        return recognizer.recognize_joined_hands(image, timestamp_ms)
     detect_interval = 0.08
 
     def __init__(self, segment: Segment, sound=None):
@@ -298,6 +336,15 @@ class NarutoMode(Mode):
 class GokuMode(Mode):
     name = "goku"
     models = (HAND_MODEL, FACE_MODEL)
+    pose_detector: type[GokuPoseDetector] = GokuPoseDetector
+
+    @classmethod
+    def create_recognizer(cls):
+        return create_pose_detector(cls.pose_detector)
+
+    @staticmethod
+    def detect(recognizer, image: mp.Image, timestamp_ms: int):
+        return recognizer.recognize_pose(image, timestamp_ms)
     detect_interval = 0.066
     manual_keys = False
     detect_while_vanished = True
