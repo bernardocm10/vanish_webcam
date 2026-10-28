@@ -14,13 +14,13 @@ from vanishcam import app
 from vanishcam import detectors, segmentation
 from vanishcam.camera import CameraInfo
 from vanishcam.control_panel import (
-    ADD_TILE, AMBER, MODE_CARDS, STAGE, WIDTH, ControlPanel, PanelRenderer, PanelView, fit_into, hit, panel_height,
-    tiles,
+    ADD_TILE, AMBER, BAR, MODE_CARDS, STAGE, WIDTH, ControlPanel, PanelRenderer, PanelView, fit_into, hit, key_legend,
+    panel_height, tiles,
 )
 from .test_video_output import TEST_SHORTCUTS, InlineRecognizer, app_mocks, arguments, video_clock
 from vanishcam.i18n import t
 from vanishcam.modes import MODES
-from vanishcam.shortcuts import Shortcuts
+from vanishcam.shortcuts import ACTIONS, Shortcuts
 from vanishcam.user_data import MAX_GALLERY, Settings, UserData
 
 
@@ -195,6 +195,64 @@ class FitIntoTests(unittest.TestCase):
         self.assertTrue((fit_into(None, 40, 30) == STAGE).all())
 
 
+class ControlPanelTabsTests(unittest.TestCase):
+    def render(self, view, **kwargs):
+        return PanelRenderer().render(view, **kwargs)
+
+    def drawn_text(self, view, **kwargs):
+        """Everything the panel writes, joined: spaced text is drawn one letter at a time."""
+        drawn = []
+        original = control_panel.ImageDraw.ImageDraw.text
+
+        def spy(draw, xy, text, *args, **options):
+            drawn.append(text)
+            return original(draw, xy, text, *args, **options)
+
+        with patch.object(control_panel.ImageDraw.ImageDraw, "text", spy):
+            self.render(view, **kwargs)
+        return "".join(drawn)
+
+    def test_tabs_sit_in_the_top_bar_and_the_panel_does_not_grow(self):
+        view = PanelView(mode="normal", status="ready")
+        image, regions = self.render(view)
+        tabs = [r for r in regions if r.action[0] == "tab"]
+        self.assertEqual([r.action[1] for r in tabs], ["live", "settings"])
+        self.assertTrue(all(r.box[3] <= BAR for r in tabs))
+        self.assertEqual(image.shape[0], panel_height(view))
+        settings, _ = self.render(view, tab="settings")
+        self.assertEqual(settings.shape, image.shape)
+
+    def test_settings_tab_lists_every_action_and_the_switch(self):
+        view = PanelView(mode="normal", status="ready", shortcuts=Shortcuts().with_enabled(True))
+        _, regions = self.render(view, tab="settings")
+        actions = [r.action for r in regions]
+        self.assertIn(("shortcuts_enabled", False), actions)
+        self.assertIn(("reset_shortcuts",), actions)
+        self.assertEqual([a[1] for a in actions if a[0] == "capture"], list(ACTIONS))
+        self.assertFalse(any(a[0] in ("vanish", "background", "menu") for a in actions))  # Nothing from LIVE.
+
+    def test_rows_are_not_clickable_while_shortcuts_are_off(self):
+        _, regions = self.render(PanelView(mode="normal", status="ready"), tab="settings")
+        actions = [r.action for r in regions]
+        self.assertIn(("shortcuts_enabled", True), actions)
+        self.assertFalse(any(a[0] == "capture" for a in actions))
+
+    def test_capturing_row_asks_for_a_key(self):
+        view = PanelView(mode="normal", status="ready", shortcuts=Shortcuts().with_enabled(True))
+        self.assertIn(t("panel.press_key"), self.drawn_text(view, tab="settings", capturing="vanish"))
+
+    def test_live_legends_follow_the_bindings_and_vanish_when_off(self):
+        on = PanelView(mode="normal", status="ready", shortcuts=Shortcuts().with_enabled(True).rebind("vanish", ord("x")))
+        self.assertEqual(key_legend(on, "vanish"), "X")
+        self.assertEqual(key_legend(on, "recapture"), t("panel.space"))
+        self.assertEqual(key_legend(on, "quit"), "")
+        off = PanelView(mode="normal", status="ready")
+        for action in ("vanish", "reappear", "recapture", "fullscreen", "detach"):
+            self.assertEqual(key_legend(off, action), "")
+        self.assertIn(t("panel.footer_off"), self.drawn_text(off))
+        self.assertIn(t("panel.footer_on"), self.drawn_text(on))
+
+
 class ControlPanelWindowTests(unittest.TestCase):
     SIZE = (WIDTH + 400, 760)
 
@@ -213,6 +271,21 @@ class ControlPanelWindowTests(unittest.TestCase):
         x = (region.box[0] + region.box[2]) / 2
         y = (region.box[1] + region.box[3]) / 2
         self.panel._on_mouse(cv2.EVENT_LBUTTONUP, x, y, 0, None)
+
+    def test_poll_switches_tab_and_starts_capture(self):
+        on = PanelView("normal", "Pronto", shortcuts=Shortcuts().with_enabled(True))
+        self.panel.show(on, self.video)
+        self.click(("tab", "settings"))
+        self.assertEqual(self.panel.poll(), [])
+        self.assertEqual(self.panel.tab, "settings")
+        self.panel.show(on, self.video)
+        self.click(("capture", "vanish"))
+        self.assertEqual(self.panel.poll(), [])
+        self.assertEqual(self.panel.capturing, "vanish")
+        self.panel.show(on, self.video)
+        self.click(("tab", "live"))
+        self.panel.poll()
+        self.assertEqual((self.panel.tab, self.panel.capturing), ("live", None))
 
     def test_panel_redraws_only_on_change_while_the_video_updates_every_frame(self):
         view = PanelView("normal", "Pronto")

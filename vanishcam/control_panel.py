@@ -21,6 +21,7 @@ from PIL import Image, ImageDraw, ImageFont, ImageOps
 
 from .i18n import t
 from .modes import MODES
+from .shortcuts import ACTIONS, Shortcuts
 from .paths import FONT_DIR
 from .user_data import pick_image_file
 
@@ -43,6 +44,8 @@ FOOTER = 34
 # Initial room for the video beside the panel; the window can then be resized freely.
 VIDEO_WIDTH = 960
 FULLSCREEN_HINT_SECONDS = 4.0
+TABS = ("live", "settings")
+SHORTCUT_ROW = 28  # Each action on the SETTINGS tab.
 
 # Broadcast control surface: light faceplate, black ink, a single signal color.
 FACE = (232, 229, 222)
@@ -100,6 +103,7 @@ class PanelView:
     camera_detail: str = ""
     can_adjust: bool = False
     detached: bool = False  # The video in its own window instead of beside the panel.
+    shortcuts: Shortcuts = Shortcuts()
 
     @property
     def camera_name(self) -> str:
@@ -117,6 +121,21 @@ class Region:
     def contains(self, x: float, y: float) -> bool:
         x0, y0, x1, y1 = self.box
         return x0 <= x <= x1 and y0 <= y <= y1
+
+
+def action_name(action: str) -> str:
+    """How a shortcut's action is called in the panel: "mode.goku" -> "Goku"."""
+    kind, _, name = action.partition(".")
+    if kind == "mode":
+        return t(f"mode.{name}.title")
+    return t({"recapture": "panel.recapture", "quit": "panel.quit"}.get(action, f"panel.{action}"))
+
+
+def key_legend(view: PanelView, action: str) -> str:
+    """The key printed on a LIVE button: none while the shortcuts are off."""
+    if not view.shortcuts.enabled:
+        return ""
+    return Shortcuts.label(view.shortcuts.key_for(action))
 
 
 def hit(regions: list[Region], x: float, y: float) -> Region | None:
@@ -214,6 +233,17 @@ def fit_into(image: np.ndarray, width: int, height: int) -> np.ndarray:
     return stage
 
 
+def footer(view: PanelView, spots: Layout, text, line, fit) -> None:
+    """A message for a few seconds, otherwise whether the shortcuts are on."""
+    y = spots.footer
+    line(0, y, WIDTH, y, RULE)
+    if view.message:
+        text((PAD, y + 17), fit(view.message, 10.5, "mono-bold", WIDTH - 2 * PAD), 10.5, TALLY, "mono-bold", "lm")
+    else:
+        hint = t("panel.footer_on" if view.shortcuts.enabled else "panel.footer_off")
+        text((PAD, y + 17), hint, 9.5, GREY, "mono", "lm", spacing=0.6)
+
+
 class PanelRenderer:
     def __init__(self):
         self.thumbs: dict[Path, Image.Image | None] = {}
@@ -246,15 +276,20 @@ class PanelRenderer:
 
     def render(
         self, view: PanelView, hover: tuple[float, float] | None = None, menu: str | None = None,
+        tab: str = "live", capturing: str | None = None,
     ) -> tuple[np.ndarray, list[Region]]:
-        """The panel image and its click regions; menu is the open dropdown ("mode", "camera" or None)."""
+        """The panel image and its click regions.
+
+        menu is the open dropdown ("mode", "camera" or None), tab the page shown ("live" or
+        "settings"), capturing the shortcut waiting for its new key.
+        """
         spots = layout(view)
         height = spots.height
         canvas = Image.new("RGB", (WIDTH * SCALE, height * SCALE), FACE)
         draw = ImageDraw.Draw(canvas)
         regions: list[Region] = []
         # With a menu open only the menu reacts: the rest of the panel is covered.
-        covered = menu is not None
+        covered = menu is not None and tab == "live"
 
         def box(x0, y0, x1, y1):
             return [round(x0 * SCALE), round(y0 * SCALE), round(x1 * SCALE) - 1, round(y1 * SCALE) - 1]
@@ -355,10 +390,26 @@ class PanelRenderer:
         text((PAD, BAR / 2), "VANISHCAM", 12.5, FACE, "mono-bold", "lm", spacing=2.2)
         lamp = (WIDTH - PAD - 12, BAR / 2 - 6, WIDTH - PAD, BAR / 2 + 6)
         rect(lamp, fill=view.status_color, outline=(70, 68, 64))
-        text((lamp[0] - 10, BAR / 2), "TALLY", 9, (130, 126, 118), "mono", "rm", spacing=1)
+        # The tabs live in the bar: the panel stays as tall as before.
+        x = 150
+        for name in TABS:
+            label = t(f"panel.tab_{name}")
+            width = font(10, "mono-bold").getlength(label) / SCALE + 1 * len(label) + 24
+            r = (x, 0, x + width, BAR)
+            active = name == tab
+            color = FACE if active or hovered(r) else PALE
+            text((x + width / 2, BAR / 2), label, 10, color, "mono-bold", "mm", spacing=1)
+            if active:
+                rect((x + 8, BAR - 3, x + width - 8, BAR), fill=TALLY)
+            clickable(r, ("tab", name))
+            x += width
         rect((PAD, 56, PAD + 8, 64), fill=view.status_color)
         text((PAD + 16, 60), fit(view.status.upper(), 11.5, "mono-bold", WIDTH - 2 * PAD - 16), 11.5, INK, "mono-bold", "lm")
         line(0, 78.5, WIDTH, 78.5, INK)
+
+        if tab == "settings":
+            self._settings(view, spots, capturing, text, rect, line, fit, hovered, clickable, section, key)
+            return self._finish(canvas, height, regions)
 
         # A · Effect: the active one; the others in its menu.
         y = spots.effect
@@ -433,7 +484,7 @@ class PanelRenderer:
         camera_keys = (
             (t("panel.reopen"), "", ("reopen_camera",), True),
             (t("panel.camera_settings"), "", ("camera_settings",), view.can_adjust and view.camera_state == "live"),
-            (t("panel.attach" if view.detached else "panel.detach"), "D", ("detach",), True),
+            (t("panel.attach" if view.detached else "panel.detach"), key_legend(view, "detach"), ("detach",), True),
         )
         for column, (label, legend, action, enabled) in enumerate(camera_keys):
             x0 = PAD + column * (third + TILE_GAP)
@@ -444,10 +495,11 @@ class PanelRenderer:
         y = spots.controls
         section(y - 16, "D", t("panel.controls"))
         buttons = (
-            (t("panel.vanish"), "V", ("vanish",), view.manual_keys),
-            (t("panel.reappear"), "R", ("reappear",), view.manual_keys),
-            (t("panel.recapture"), t("panel.space"), ("recapture",), view.can_recapture),
-            (t("panel.window" if view.fullscreen else "panel.fullscreen"), "F", ("fullscreen",), True),
+            (t("panel.vanish"), key_legend(view, "vanish"), ("vanish",), view.manual_keys),
+            (t("panel.reappear"), key_legend(view, "reappear"), ("reappear",), view.manual_keys),
+            (t("panel.recapture"), key_legend(view, "recapture"), ("recapture",), view.can_recapture),
+            (t("panel.window" if view.fullscreen else "panel.fullscreen"), key_legend(view, "fullscreen"),
+             ("fullscreen",), True),
         )
         for index, (label, legend, action, enabled) in enumerate(buttons):
             row, column = divmod(index, 2)
@@ -455,12 +507,7 @@ class PanelRenderer:
             y0 = y + row * (KEY_HEIGHT + TILE_GAP)
             key((x0, y0, x0 + half, y0 + KEY_HEIGHT), label, legend, action, enabled)
 
-        y = spots.footer
-        line(0, y, WIDTH, y, RULE)
-        if view.message:
-            text((PAD, y + 17), fit(view.message, 10.5, "mono-bold", WIDTH - 2 * PAD), 10.5, TALLY, "mono-bold", "lm")
-        else:
-            text((PAD, y + 17), t("panel.footer", count=len(MODE_CARDS)), 9.5, GREY, "mono", "lm", spacing=0.6)
+        footer(view, spots, text, line, fit)
 
         # The open menu, drawn last so it covers the sections below its selector.
         if menu is not None:
@@ -501,8 +548,52 @@ class PanelRenderer:
             regions[:0] = items
             regions.append(Region((0, 0, WIDTH, height), ("menu", None)))
 
+        return self._finish(canvas, height, regions)
+
+    @staticmethod
+    def _finish(canvas: Image.Image, height: int, regions: list[Region]) -> tuple[np.ndarray, list[Region]]:
         small = canvas.resize((WIDTH, height), Image.Resampling.BOX)
         return cv2.cvtColor(np.asarray(small), cv2.COLOR_RGB2BGR), regions
+
+    @staticmethod
+    def _settings(view, spots, capturing, text, rect, line, fit, hovered, clickable, section, key) -> None:
+        """SETTINGS tab: the shortcuts switch, one row per action, and restoring the defaults."""
+        shortcuts = view.shortcuts
+        y = spots.effect
+        section(y - 16, "A", t("panel.shortcuts"))
+        switch = (PAD, y, WIDTH - PAD, y + CAMERA_HEIGHT)
+        over = hovered(switch)
+        rect(switch, fill=HOVER if over else KEY, outline=INK if over else KEY_EDGE)
+        lamp = GREEN if shortcuts.enabled else RULE
+        rect((PAD + 12, y + CAMERA_HEIGHT / 2 - 4, PAD + 20, y + CAMERA_HEIGHT / 2 + 4), fill=lamp)
+        state = t("panel.shortcuts_on" if shortcuts.enabled else "panel.shortcuts_off")
+        text((PAD + 30, y + CAMERA_HEIGHT / 2), state, 15, INK, "title", "lm")
+        clickable(switch, ("shortcuts_enabled", not shortcuts.enabled))
+        y += CAMERA_HEIGHT + 14
+        text((PAD, y), fit(t("panel.shortcuts_note"), 9.5, "mono", WIDTH - 2 * PAD), 9.5, GREY, "mono", "lm")
+        y += 16
+        for action in ACTIONS:
+            r = (PAD, y, WIDTH - PAD, y + SHORTCUT_ROW)
+            waiting = action == capturing
+            if shortcuts.enabled and hovered(r):
+                rect((PAD, y + 1, WIDTH - PAD, y + SHORTCUT_ROW), fill=HOVER)
+            color = INK if shortcuts.enabled else PALE
+            text((PAD + 4, y + SHORTCUT_ROW / 2), action_name(action).upper(), 11, color, "mono-bold", "lm", spacing=0.6)
+            if waiting:
+                text((WIDTH - PAD - 4, y + SHORTCUT_ROW / 2), t("panel.press_key"), 10, TALLY, "mono-bold", "rm")
+            else:
+                label = Shortcuts.label(shortcuts.key_for(action)) or "—"
+                cap = (WIDTH - PAD - 70, y + 4, WIDTH - PAD - 4, y + SHORTCUT_ROW - 4)
+                rect(cap, outline=KEY_EDGE if shortcuts.enabled else RULE)
+                text(((cap[0] + cap[2]) / 2, (cap[1] + cap[3]) / 2), label, 10, color, "mono-bold", "mm")
+            if shortcuts.enabled:
+                clickable(r, ("capture", action))
+            y += SHORTCUT_ROW
+            line(PAD, y, WIDTH - PAD, y, RULE)
+        y += TILE_GAP
+        key((PAD, y, WIDTH - PAD, y + KEY_HEIGHT), t("panel.reset_shortcuts"), "", ("reset_shortcuts",),
+            shortcuts.enabled)
+        footer(view, spots, text, line, fit)
 
 
 class ControlPanel:
@@ -511,7 +602,8 @@ class ControlPanel:
     Actions are tuples: ("mode", key), ("background", Path | None), ("remove", Path),
     ("import", Path), ("error", text), ("vanish",), ("reappear",), ("recapture",),
     ("fullscreen",), ("camera", index), ("reopen_camera",), ("camera_settings",), ("detach",),
-    and ("cameras",) when the camera menu opens, to list the webcams again.
+    ("cameras",) when the camera menu opens, to list the webcams again, and from the SETTINGS
+    tab ("shortcuts_enabled", bool) and ("reset_shortcuts",).
     """
 
     def __init__(self, title: str = PANEL_TITLE, renderer: PanelRenderer | None = None):
@@ -523,6 +615,9 @@ class ControlPanel:
         self.picked: queue.SimpleQueue[tuple] = queue.SimpleQueue()
         self.picking = False
         self.menu: str | None = None
+        self.tab = "live"
+        # The shortcut whose new key is awaited (SETTINGS tab); the app reads the key.
+        self.capturing: str | None = None
         self.fullscreen = False
         self.fullscreen_since = 0.0
         self.detached = False
@@ -582,10 +677,12 @@ class ControlPanel:
         # The panel is redrawn only when something changes: the view, the item under the
         # mouse, a thumbnail, the open menu. The video beside it, when a new frame comes.
         over = hit(self.regions, *self.hover) if self.hover else None
-        key = (view, over.box if over else None, self.renderer.version, self.menu)
+        key = (view, over.box if over else None, self.renderer.version, self.menu, self.tab, self.capturing)
         panel_changed = key != self.drawn
         if panel_changed:
-            self.panel, self.regions = self.renderer.render(view, self.hover, self.menu)
+            self.panel, self.regions = self.renderer.render(
+                view, self.hover, self.menu, tab=self.tab, capturing=self.capturing,
+            )
             self.drawn = key
         panel = self.panel
         width, height = self._window_size(panel.shape[0])
@@ -628,6 +725,12 @@ class ControlPanel:
         for x, y in clicks:
             region = hit(self.regions, x, y)
             if region is None:
+                continue
+            if region.action[0] == "tab":
+                self.tab, self.menu, self.capturing = region.action[1], None, None
+                continue
+            if region.action[0] == "capture":
+                self.capturing = None if self.capturing == region.action[1] else region.action[1]
                 continue
             if region.action[0] == "menu":
                 opening = region.action[1] if region.action[1] != self.menu else None
