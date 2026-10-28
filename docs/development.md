@@ -29,7 +29,14 @@ prototypes/         experiments that are not part of the app
 
 | File | Responsibility |
 | --- | --- |
-| `vanishcam/app.py` | Camera, background capture and updates, keyboard, virtual webcam output, and the main loop |
+| `vanishcam/app.py` | The video loop: calibration, the active effect (`EffectRuntime`), keys and panel actions |
+| `vanishcam/cli.py` | Command-line options |
+| `vanishcam/camera.py` | Opening the webcam, reopening it when it drops, and the card shown meanwhile |
+| `vanishcam/virtual_camera.py` | The virtual webcam output |
+| `vanishcam/models.py` | MediaPipe model paths and downloads |
+| `vanishcam/segmentation.py` | The person mask, once per frame |
+| `vanishcam/background.py` | Picture backgrounds and keeping the real room up to date |
+| `vanishcam/detectors.py` | Gesture and pose detection for each mode, and `AsyncRecognizer` |
 | `vanishcam/modes.py` | One class per effect: `NormalMode`, `NarutoMode`, `GokuMode`, `ParticlesMode`, `AshMode` |
 | `vanishcam/effects/` | `normal.py`, `naruto.py`, `goku.py`, `particles.py`, `ash.py`: drawing for each effect |
 | `vanishcam/control_panel.py` | Draws the panel with Pillow and turns clicks into actions |
@@ -48,7 +55,7 @@ A few things worth knowing:
 
 1. Put its drawing and pose detection in `vanishcam/effects/<name>.py`.
 2. Subclass `Mode` in `vanishcam/modes.py` and register it in `MODES`.
-3. Add its detector in `create_recognizer` and `detection_function` in `vanishcam/app.py`.
+3. Add its detector in `create_recognizer` and `detection_function` in `vanishcam/detectors.py`.
 4. Add its row to `MODE_CARDS` in `vanishcam/control_panel.py`.
 5. Add its `mode.<name>.title`, `.hint` and `.instructions` texts to both languages in `vanishcam/i18n.py`.
 

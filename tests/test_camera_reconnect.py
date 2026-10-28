@@ -6,6 +6,8 @@ from unittest.mock import Mock, patch
 import numpy as np
 
 from vanishcam import app
+from vanishcam import detectors, segmentation
+from vanishcam.camera import CameraFeed, dim_for_card, reconnecting_card
 from vanishcam.i18n import t
 from .test_video_output import InlineRecognizer, app_mocks, arguments
 
@@ -37,7 +39,7 @@ class CameraFeedTests(unittest.TestCase):
         frame = np.zeros((HEIGHT, WIDTH, 3), np.uint8)
         capture = scripted_capture([(True, frame, 0.0), (False, None, 0.1), (True, frame, 0.2)], self.clock)
         opener = Mock(return_value=capture)
-        feed = app.CameraFeed(opener, lost_after=0.5)
+        feed = CameraFeed(opener, lost_after=0.5)
         self.assertIs(feed.read(), frame)
         self.assertIsNone(feed.read())
         self.assertFalse(feed.reconnecting)
@@ -51,7 +53,7 @@ class CameraFeedTests(unittest.TestCase):
         back = Mock()
         back.read.return_value = (True, frame)
         opener = Mock(side_effect=[lost, RuntimeError("busy"), back])
-        feed = app.CameraFeed(opener, lost_after=0.5, retry_seconds=0.01)
+        feed = CameraFeed(opener, lost_after=0.5, retry_seconds=0.01)
         self.assertIsNone(feed.read())
         self.assertIsNone(feed.read())
         self.assertTrue(feed.reconnecting)
@@ -75,7 +77,7 @@ class CameraFeedTests(unittest.TestCase):
             retried.set()
             raise RuntimeError("unplugged")
 
-        feed = app.CameraFeed(opener, lost_after=0.5, retry_seconds=0.01)
+        feed = CameraFeed(opener, lost_after=0.5, retry_seconds=0.01)
         feed.read()
         feed.read()
         self.assertTrue(retried.wait(2.0))
@@ -87,14 +89,14 @@ class CameraFeedTests(unittest.TestCase):
 
 class ReconnectingCardTests(unittest.TestCase):
     def test_card_keeps_the_frame_size_and_draws_the_status(self):
-        base = app.dim_for_card(np.full((HEIGHT * 4, WIDTH * 4, 3), 200, np.uint8), WIDTH * 4, HEIGHT * 4)
+        base = dim_for_card(np.full((HEIGHT * 4, WIDTH * 4, 3), 200, np.uint8), WIDTH * 4, HEIGHT * 4)
         self.assertLess(int(base.max()), 200)  # Dimmed.
-        card = app.reconnecting_card(base, "RECONECTANDO A CÂMERA", "Webcam 0 · tentando há 3 s", True)
+        card = reconnecting_card(base, "RECONECTANDO A CÂMERA", "Webcam 0 · tentando há 3 s", True)
         self.assertEqual(card.shape, base.shape)
         self.assertGreater(int(card.max()), int(base.max()) + 60)  # Light text on the dimmed frame.
 
     def test_card_without_any_previous_frame(self):
-        base = app.dim_for_card(None, WIDTH, HEIGHT)
+        base = dim_for_card(None, WIDTH, HEIGHT)
         self.assertEqual(base.shape, (HEIGHT, WIDTH, 3))
 
 
@@ -126,8 +128,8 @@ class ReconnectLoopTests(unittest.TestCase):
             mocks.enter_context(patch.object(
                 app, "load_background_image", return_value=np.full((HEIGHT, WIDTH, 3), 30, np.uint8),
             ))
-            mocks.enter_context(patch.object(app, "person_mask", return_value=np.ones((HEIGHT, WIDTH), np.float32)))
-            mocks.enter_context(patch.object(app, "recognize_gesture", return_value=("No_Hand", 0.0)))
+            mocks.enter_context(patch.object(segmentation, "person_mask", return_value=np.ones((HEIGHT, WIDTH), np.float32)))
+            mocks.enter_context(patch.object(detectors, "recognize_gesture", return_value=("No_Hand", 0.0)))
             mocks.enter_context(patch.object(app, "AsyncRecognizer", InlineRecognizer))
             mocks.enter_context(patch.object(app, "open_virtual_camera", return_value=camera))
             mocks.enter_context(patch.object(app.time, "perf_counter", side_effect=lambda: clock[0]))

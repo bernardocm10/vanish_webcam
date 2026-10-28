@@ -3,9 +3,12 @@ from contextlib import ExitStack
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
+import mediapipe as mp
 import numpy as np
 
 from vanishcam import app
+from vanishcam import segmentation
+from vanishcam.detectors import MultiViewHandLandmarker, detector_status
 from vanishcam.modes import NarutoMode
 from vanishcam.effects.naruto import (
     EFFECT_SECONDS, falling_log_anchor, hand_seal_from_landmarks, joined_hands_from_landmarks,
@@ -174,17 +177,17 @@ class JoinedHandsTests(unittest.TestCase):
     def test_debug_line_says_which_seal_matched(self):
         primary, alternate = Mock(), Mock()
         primary.detect_for_video.return_value = SimpleNamespace(hand_landmarks=self.interlaced())
-        recognizer = app.MultiViewHandLandmarker(primary, alternate)
-        image = app.mp.Image(image_format=app.mp.ImageFormat.SRGB, data=np.zeros((480, 640, 3), np.uint8))
+        recognizer = MultiViewHandLandmarker(primary, alternate)
+        image = mp.Image(image_format=mp.ImageFormat.SRGB, data=np.zeros((480, 640, 3), np.uint8))
         self.assertTrue(recognizer.recognize_joined_hands(image, 100))
-        self.assertIn("seal=clasped", app.detector_status(recognizer, True))
+        self.assertIn("seal=clasped", detector_status(recognizer, True))
 
     def test_recognizer_uses_two_hands_in_the_current_frame(self):
         primary, alternate = Mock(), Mock()
         primary.detect_for_video.return_value = SimpleNamespace(
             hand_landmarks=[self.hand(0.47), self.hand(0.53)])
-        recognizer = app.MultiViewHandLandmarker(primary, alternate)
-        image = app.mp.Image(image_format=app.mp.ImageFormat.SRGB,
+        recognizer = MultiViewHandLandmarker(primary, alternate)
+        image = mp.Image(image_format=mp.ImageFormat.SRGB,
                              data=np.zeros((480, 640, 3), np.uint8))
         self.assertTrue(recognizer.recognize_joined_hands(image, 100))
         self.assertEqual(recognizer.last_hand_count, 2)
@@ -198,8 +201,8 @@ class JoinedHandsTests(unittest.TestCase):
             SimpleNamespace(hand_landmarks=[]),
             SimpleNamespace(hand_landmarks=[self.hand(0.47), self.hand(0.53)]),
         ]
-        recognizer = app.MultiViewHandLandmarker(primary, alternate)
-        image = app.mp.Image(image_format=app.mp.ImageFormat.SRGB,
+        recognizer = MultiViewHandLandmarker(primary, alternate)
+        image = mp.Image(image_format=mp.ImageFormat.SRGB,
                              data=np.zeros((480, 640, 3), np.uint8))
         self.assertTrue(recognizer.recognize_joined_hands(image, 100))
         self.assertEqual(recognizer.preferred_view, ("full", 3))
@@ -271,7 +274,7 @@ class NarutoVideoLoopTests(unittest.TestCase):
             app_mocks(mocks, segmenter, recognizer)
             mocks.enter_context(patch.object(app, "VanishSound", return_value=sound))
             mocks.enter_context(patch.object(app, "open_virtual_camera", return_value=virtual))
-            mocks.enter_context(patch.object(app, "person_mask", return_value=np.ones((80, 120), np.float32)))
+            mocks.enter_context(patch.object(segmentation, "person_mask", return_value=np.ones((80, 120), np.float32)))
             mocks.enter_context(patch.object(app, "AsyncRecognizer", InlineRecognizer))
             mocks.enter_context(patch.object(app.time, "perf_counter", side_effect=clock))
             mocks.enter_context(patch.object(app.cv2, "namedWindow"))

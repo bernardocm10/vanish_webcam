@@ -6,7 +6,7 @@ from unittest.mock import Mock, patch
 
 import numpy as np
 
-from vanishcam import app
+from vanishcam.detectors import GokuPoseDetector
 from vanishcam.modes import FrameInfo, GokuMode
 from vanishcam.effects.goku import (
     CHEEK_LEFT, CHEEK_RIGHT, FOREHEAD_TOP, NOSE_BRIDGE, HoldTracker, face_reference,
@@ -189,7 +189,7 @@ class GokuDetectorTests(unittest.TestCase):
         ]
         hands = Mock()
         hands.detect_for_video.return_value = SimpleNamespace(hand_landmarks=[hand()])
-        detector = app.GokuPoseDetector(face, hands)
+        detector = GokuPoseDetector(face, hands)
         image = SimpleNamespace(width=WIDTH, height=HEIGHT)
         self.assertTrue(detector.recognize_pose(image, 0))
         self.assertTrue(detector.recognize_pose(image, 500))
