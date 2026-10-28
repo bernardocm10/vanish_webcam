@@ -1,5 +1,7 @@
 # VanishCam
 
+[![Tests](https://github.com/bernardocm10/vanish_webcam/actions/workflows/tests.yml/badge.svg)](https://github.com/bernardocm10/vanish_webcam/actions/workflows/tests.yml)
+
 Vanish from your webcam with a hand gesture, live in Teams, OBS, or any video call. Dissolve into thin air, swap yourself for a log in a cloud of smoke, teleport like Goku, scatter into fragments in the wind, or turn to ash and crumble — in front of your real room or any picture you choose.
 
 <p align="center"><img src="docs/panel.png" alt="VanishCam control panel" width="360"></p>
