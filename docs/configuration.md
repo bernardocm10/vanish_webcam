@@ -18,7 +18,7 @@ Pass them after the start command, for example `.venv/bin/python -m vanishcam --
 | `--call-audio` | Send your voice plus the effect sounds to the call: **VanishCam Mic** on Linux (PipeWire), **CABLE Output** on Windows ([VB-CABLE](calls.md#windows-call-microphone-with-vb-cable)) |
 | `--no-mirror` | Do not mirror the video |
 | `--fullscreen` | Start in fullscreen, with only the video |
-| `--video-window` | Start with the video detached in its own **VanishCam - Video** window (`D` or **DETACH** in the panel does the same) |
+| `--video-window` | Start with the video detached in its own **VanishCam - Video** window (**DETACH** in the panel does the same) |
 | `--static-background` | Keep the captured background as it is instead of updating it |
 | `--gesture-debug` | Print gesture recognition details in the terminal |
 | `--lang en\|pt` | Interface language (default: the system language) |
@@ -38,7 +38,7 @@ If the wrong camera opens, pick the right one in **C · Camera** in the panel; t
 
 ### If the webcam disconnects
 
-If the webcam stops sending images for half a second (unplugged, or taken by another app), the app keeps running: it tries to reopen it every second, and meanwhile the preview and the call show a **Reconnecting the camera** card over a blurred, dimmed copy of the last image, so the call does not freeze on a still frame. This card is the only text the app ever puts on the video. As soon as the webcam is back the video resumes, with the same effect and background; if it comes back at another resolution, it is scaled to the one the call already receives. Press `Q` to give up and quit.
+If the webcam stops sending images for half a second (unplugged, or taken by another app), the app keeps running: it tries to reopen it every second, and meanwhile the preview and the call show a **Reconnecting the camera** card over a blurred, dimmed copy of the last image, so the call does not freeze on a still frame. This card is the only text the app ever puts on the video. As soon as the webcam is back the video resumes, with the same effect and background; if it comes back at another resolution, it is scaled to the one the call already receives. Close the window to give up and quit.
 
 ## Troubleshooting
 
@@ -49,7 +49,7 @@ The captured room keeps updating wherever you are clearly not in the frame, so i
 If you still see a residue:
 
 1. Turn off auto exposure in the webcam settings.
-2. Press `SPACE` (**NEW BACKGROUND**) and step out of the frame to capture the room again.
+2. Click **NEW BACKGROUND** and step out of the frame to capture the room again.
 
 To keep the original snapshot and never update it, use `--static-background`.
 
@@ -62,4 +62,4 @@ To keep the original snapshot and never update it, use `--static-background`.
 - For Particles, keep your face visible, and the four fingers straight and together on your brow.
 - Run with `--gesture-debug` to see in the terminal what the app detects. Nothing is drawn on the video.
 
-You can always press `V` to vanish without the gesture (except in Goku).
+You can always click **VANISH** to vanish without the gesture (except in Goku).

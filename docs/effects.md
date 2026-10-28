@@ -2,13 +2,13 @@
 
 [← Documentation](README.md)
 
-Pick an effect in the panel or with the keys `1`–`5`, then make its gesture in front of the camera. You can also press `V` to vanish and `R` to reappear without the gesture (except in Goku).
+Pick an effect in the panel, then make its gesture in front of the camera. You can also click **VANISH** to vanish and **REAPPEAR** to reappear without the gesture (except in Goku). With [keyboard shortcuts](control-panel.md#keyboard-shortcuts) on, their keys do the same.
 
 ## 1 · Normal
 
 **Gesture:** raise your index and middle fingers in a V sign.
 
-You dissolve into the background. The effect starts as soon as the gesture is recognized and lasts about 3.6 seconds. Press `R` to reappear.
+You dissolve into the background. The effect starts as soon as the gesture is recognized and lasts about 3.6 seconds. Click **REAPPEAR** to come back.
 
 ## 2 · Naruto
 
@@ -17,13 +17,13 @@ You dissolve into the background. The effect starts as soon as the gesture is re
 - **Palms together:** press your palms together in front of the webcam, fingers pointing up and side by side.
 - **Hands clasped:** interlace your fingers, or clasp one hand with the other, so that each hand's fingertips wrap around to the other hand's knuckles.
 
-Open hands that are only close to each other do not count, and neither do two fists touching. For palms together, the palms, wrists, and fingertips must be close: the hand tracker is not pixel accurate, so a gap of a couple of centimeters still counts. After pressing `R`, separate your hands before doing the gesture again.
+Open hands that are only close to each other do not count, and neither do two fists touching. For palms together, the palms, wrists, and fingertips must be close: the hand tracker is not pixel accurate, so a gap of a couple of centimeters still counts. After reappearing, separate your hands before doing the gesture again.
 
 When the fingers are interlaced, one hand often hides the other and the tracker may see only one: turn your hands a little towards the camera. `--gesture-debug` shows how many hands it sees and which seal matched (`seal=palms` or `seal=clasped`).
 
-You vanish in a cloud of smoke and a wooden log appears, falls, and stays in your place until you press `R`. After that you can do it again.
+You vanish in a cloud of smoke and a wooden log appears, falls, and stays in your place until you click **REAPPEAR**. After that you can do it again.
 
-- **Sound:** `assets/vanish.MP3` plays through your speakers when you vanish, also when triggered with `V`. No microphone is needed.
+- **Sound:** `assets/vanish.MP3` plays through your speakers when you vanish, also when triggered with **VANISH**. No microphone is needed.
 - Uses `hand_landmarker.task` to track both hands.
 
 ## 3 · Goku
@@ -33,7 +33,7 @@ You vanish in a cloud of smoke and a wooden log appears, falls, and stays in you
 Comic-style vertical speed lines run across your silhouette just before you teleport away, and linger briefly afterward. **To come back**, lower your hand and repeat the gesture for another second: the return plays the effect in reverse.
 
 - If you break the pose, the countdown starts over. The terminal shows the countdown.
-- **`V` and `R` do not work in this mode:** the gesture is the only way to vanish and reappear.
+- **VANISH and REAPPEAR do not work in this mode:** the gesture is the only way to vanish and reappear.
 - **Sound:** `assets/teleport.mp3` plays on both disappearance and reappearance. Replace it with your own MP3 of the same name to change it.
 - Uses `face_landmarker.task` to find your forehead and `hand_landmarker.task` to track your fingers. Particles uses the same two models to find your brow and your hand.
 
@@ -41,17 +41,17 @@ Comic-style vertical speed lines run across your silhouette just before you tele
 
 **Gesture:** a salute. Put your hand flat on your brow or forehead, the four fingers straight and together, and hold for a moment (under half a second).
 
-Fingers spread apart, bent, or with the ring and pinky folded (the Goku pose) do not count. After pressing `R`, lower your hand before saluting again.
+Fingers spread apart, bent, or with the ring and pinky folded (the Goku pose) do not count. After reappearing, lower your hand before saluting again.
 
-Your silhouette breaks into small colored fragments that drift sideways as if carried by the wind. The effect lasts about 2.1 seconds. Your silhouette is captured once when the effect starts, which keeps the video smooth. Press `R` to reappear.
+Your silhouette breaks into small colored fragments that drift sideways as if carried by the wind. The effect lasts about 2.1 seconds. Your silhouette is captured once when the effect starts, which keeps the video smooth. Click **REAPPEAR** to come back.
 
 ## 5 · Ash
 
 **Gesture:** hands up. Raise both hands beside your head, open with the fingers pointing up, above your chin, one on each side of your face, and hold for a moment (under half a second).
 
-One raised hand, fists, or hands in front of your face do not count. After pressing `R`, lower your hands before raising them again.
+One raised hand, fists, or hands in front of your face do not count. After reappearing, lower your hands before raising them again.
 
-You freeze into a statue of grey ash, the ash spreading from your head down while keeping the shapes of your face. Then the statue crumbles, also from the head down: the grains fall to the floor, a cloud of dust rises, and a pile of ash grows where you stood. The pile stays until you press `R`. The whole effect lasts about 3.8 seconds; like Particles, your silhouette is captured once when it starts.
+You freeze into a statue of grey ash, the ash spreading from your head down while keeping the shapes of your face. Then the statue crumbles, also from the head down: the grains fall to the floor, a cloud of dust rises, and a pile of ash grows where you stood. The pile stays until you click **REAPPEAR**. The whole effect lasts about 3.8 seconds; like Particles, your silhouette is captured once when it starts.
 
 ## How the effects are drawn
 
