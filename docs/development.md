@@ -26,7 +26,6 @@ scripts/windows/    start.bat and its variants, build.bat
 scripts/linux/      teams.sh, the GNOME launcher and its installer
 packaging/          PyInstaller spec for the Windows EXE
 docs/               these guides
-prototypes/         experiments that are not part of the app
 ```
 
 | File | Responsibility |
@@ -41,6 +40,10 @@ prototypes/         experiments that are not part of the app
 | `vanishcam/detectors.py` | The recognizers (gesture, hands, face and hands) and `AsyncRecognizer` |
 | `vanishcam/modes.py` | One class per effect, declaring its models, recognizer and sound: `NormalMode`, `NarutoMode`, `GokuMode`, `ParticlesMode`, `AshMode`; `MODES` sets the panel order |
 | `vanishcam/effects/` | `normal.py`, `naruto.py`, `goku.py`, `particles.py`, `ash.py`: drawing for each effect |
+| `vanishcam/hand_geometry.py` | Finger and face measures shared by the effects' poses and the memes |
+| `vanishcam/meme_poses.py` | The eight meme gestures and their precedence |
+| `vanishcam/memes.py` | The meme settings (`Memes`) and the picture on screen (`MemeLayer`) |
+| `vanishcam/shortcuts.py` | Keyboard shortcuts: off by default, one key per action |
 | `vanishcam/control_panel.py` | Draws the panel with Pillow and turns clicks into actions |
 | `vanishcam/user_data.py` | Saved preferences and the background gallery |
 | `vanishcam/call_audio.py`, `vanishcam/sound.py` | Effect sounds and the call microphone (PipeWire on Linux, VB-CABLE on Windows) |

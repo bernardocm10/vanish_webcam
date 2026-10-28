@@ -1,4 +1,4 @@
-"""The meme gestures, ported from the run3 prototype with its thresholds unchanged.
+"""The meme gestures, ported from the run3 prototype (since removed) with its thresholds unchanged.
 
 Each pose takes the MediaPipe hands and the normalized face box (x1, y1, x2, y2), or None
 when no face was seen lately, and returns (matched, score).

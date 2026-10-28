@@ -11,12 +11,13 @@ Everything runs on your computer: the video is never recorded or sent anywhere, 
 ## Features
 
 - **Five effects**, each triggered by a hand gesture.
+- **Meme reactions:** pick a picture for each of eight gestures (thumbs up, calm down, hands behind the head…) and it pops up over the video in the call for a few seconds, on top of any effect.
 - **One window:** the control panel beside the live video, to switch effect and background while the camera keeps running. Detach the video to its own window for a second monitor or OBS.
 - **No accidental keys:** keyboard shortcuts are off until you turn them on in **SETTINGS**, where you also pick each key, so typing in the wrong window never triggers an effect.
 - **Camera controls:** pick the webcam by name, see its real resolution and frame rate, open its settings, and reopen it (restarting its driver on Windows) when it gets stuck.
 - **Custom backgrounds:** put any picture behind you; when you vanish, the picture is what remains.
 - **Works in calls:** virtual webcam for Teams, Discord, Zoom, Meet, and OBS, and a virtual microphone so the call hears the effect sounds (PipeWire on Linux, VB-CABLE on Windows).
-- **Remembers your choices** and starts with the last effect, background, webcam, and window layout.
+- **Remembers your choices** and starts with the last effect, background, webcam, window layout, shortcuts, and memes.
 - **Speaks your language:** the panel and messages are in English or Brazilian Portuguese, following your system.
 
 ## Quick start
@@ -57,6 +58,7 @@ Details for each one in [Effects](docs/effects.md).
 | --- | --- |
 | [Effects](docs/effects.md) | Each effect, its gesture, sounds, and how it is drawn |
 | [Control panel and backgrounds](docs/control-panel.md) | The panel, picture backgrounds, keyboard shortcuts, saved preferences |
+| [Meme reactions](docs/memes.md) | The eight gestures, choosing their pictures, and the MEMES tab |
 | [Calls, Teams and OBS](docs/calls.md) | Virtual webcam and microphone, Teams on Linux, OBS, GNOME launcher |
 | [Options and troubleshooting](docs/configuration.md) | Command-line options, camera and resolution, fixing background residue and gestures |
 | [Development](docs/development.md) | Tests, code structure, adding an effect, building the Windows EXE |
