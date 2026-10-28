@@ -11,6 +11,8 @@ from unittest.mock import Mock, patch
 import numpy as np
 
 from vanishcam import app
+from vanishcam import detectors, segmentation
+from vanishcam.segmentation import PersonSegmenter
 
 
 def arguments(**overrides):
@@ -147,8 +149,8 @@ class VideoLoopTests(unittest.TestCase):
             mocks.enter_context(patch.object(app, "open_camera", return_value=capture))
             app_mocks(mocks, segmenter, recognizer)
             opening = mocks.enter_context(patch.object(app, "open_virtual_camera", return_value=camera))
-            mocks.enter_context(patch.object(app, "person_mask", return_value=np.ones((24, 40), np.float32)))
-            mocks.enter_context(patch.object(app, "recognize_gesture", return_value=gesture))
+            mocks.enter_context(patch.object(segmentation, "person_mask", return_value=np.ones((24, 40), np.float32)))
+            mocks.enter_context(patch.object(detectors, "recognize_gesture", return_value=gesture))
             mocks.enter_context(patch.object(app, "AsyncRecognizer", InlineRecognizer))
             mocks.enter_context(patch.object(app.time, "perf_counter", side_effect=clock))
             mocks.enter_context(patch.object(app.cv2, "namedWindow"))
@@ -190,8 +192,8 @@ class VideoLoopTests(unittest.TestCase):
             loaded = mocks.enter_context(patch.object(
                 app, "load_background_image", return_value=np.full((48, 80, 3), 30, np.uint8),
             ))
-            mocks.enter_context(patch.object(app, "person_mask", return_value=mask))
-            mocks.enter_context(patch.object(app, "recognize_gesture", return_value=("No_Hand", 0.0)))
+            mocks.enter_context(patch.object(segmentation, "person_mask", return_value=mask))
+            mocks.enter_context(patch.object(detectors, "recognize_gesture", return_value=("No_Hand", 0.0)))
             mocks.enter_context(patch.object(app, "AsyncRecognizer", InlineRecognizer))
             mocks.enter_context(patch.object(app.time, "perf_counter", side_effect=clock))
             mocks.enter_context(patch.object(app.cv2, "namedWindow"))
@@ -275,8 +277,8 @@ class AsyncRecognizerTests(unittest.TestCase):
 class PersonSegmenterTests(unittest.TestCase):
     def test_one_segmentation_per_timestamp(self):
         masks = [np.zeros((4, 6), np.float32), np.ones((4, 6), np.float32)]
-        with patch.object(app, "person_mask", side_effect=masks) as segment:
-            segmenter = app.PersonSegmenter(Mock())
+        with patch.object(segmentation, "person_mask", side_effect=masks) as segment:
+            segmenter = PersonSegmenter(Mock())
             frame = np.zeros((4, 6, 3), np.uint8)
             first = segmenter(frame, 100)
             self.assertIs(segmenter(frame, 100), first)

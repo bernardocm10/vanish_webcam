@@ -5,6 +5,7 @@ from unittest.mock import Mock
 import numpy as np
 
 from vanishcam import app
+from vanishcam.detectors import HandsUpPoseDetector, detection_function
 from vanishcam.effects.ash import (
     ASH_SECONDS, CHIN, CRUMBLE_START, EFFECT_SECONDS, hands_up_pose, hands_up_reference,
     make_ash, render_ash, render_remains,
@@ -127,7 +128,7 @@ class HandsUpPoseTests(unittest.TestCase):
         face.detect_for_video.return_value = SimpleNamespace(face_landmarks=[face_landmarks()])
         hands = Mock()
         hands.detect_for_video.return_value = SimpleNamespace(hand_landmarks=[hand(0.25, 0.3), hand(0.75, 0.3)])
-        detector = app.HandsUpPoseDetector(face, hands)
+        detector = HandsUpPoseDetector(face, hands)
         image = SimpleNamespace(width=640, height=480)
         self.assertTrue(detector.recognize_pose(image, 0))
         hands.detect_for_video.return_value = SimpleNamespace(hand_landmarks=[hand(0.25, 0.3)])
@@ -140,7 +141,7 @@ class AshModeTests(unittest.TestCase):
         self.assertEqual(MODE_CARDS[-1].key, "ash")
         self.assertEqual(app.KEY_ACTIONS[ord("5")], ("mode", "ash"))
         recognizer = Mock()
-        self.assertEqual(app.detection_function("ash", recognizer), recognizer.recognize_pose)
+        self.assertEqual(detection_function("ash", recognizer), recognizer.recognize_pose)
 
     def test_hands_up_turns_to_ash_and_the_pile_stays_until_r(self):
         frame, mask, background = person()

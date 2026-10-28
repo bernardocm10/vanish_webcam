@@ -5,10 +5,8 @@ import numpy as np
 import mediapipe as mp
 
 from vanishcam.modes import NormalMode
-from vanishcam.app import (
-    MultiViewGestureRecognizer, fit_background, recognize_gesture, replace_background,
-    update_background, victory_landmark_score,
-)
+from vanishcam.background import fit_background, replace_background, update_background
+from vanishcam.detectors import MultiViewGestureRecognizer, recognize_gesture, victory_landmark_score
 
 
 def hand_points(extended=(True, True, False, False)):

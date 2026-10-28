@@ -11,6 +11,7 @@ import numpy as np
 
 from vanishcam import control_panel
 from vanishcam import app
+from vanishcam import detectors, segmentation
 from vanishcam.control_panel import (
     ADD_TILE, AMBER, MODE_CARDS, WIDTH, ControlPanel, PanelRenderer, PanelView, hit, panel_height, tiles,
 )
@@ -201,8 +202,8 @@ class LiveSwitchTests(unittest.TestCase):
             mocks.enter_context(patch.object(app, "download_models"))
             opening = mocks.enter_context(patch.object(app, "open_camera", return_value=capture))
             mocks.enter_context(patch.object(app, "VanishSound", return_value=Mock()))
-            mocks.enter_context(patch.object(app, "person_mask", return_value=mask))
-            mocks.enter_context(patch.object(app, "recognize_gesture", return_value=("No_Hand", 0.0)))
+            mocks.enter_context(patch.object(segmentation, "person_mask", return_value=mask))
+            mocks.enter_context(patch.object(detectors, "recognize_gesture", return_value=("No_Hand", 0.0)))
             mocks.enter_context(patch.object(app, "AsyncRecognizer", InlineRecognizer))
             mocks.enter_context(patch.object(app.time, "perf_counter", side_effect=clock))
             for name in ("namedWindow", "resizeWindow", "destroyAllWindows"):
