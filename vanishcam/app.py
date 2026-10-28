@@ -25,7 +25,7 @@ from .camera import (
 )
 from .cli import parse_args
 from .control_panel import ACCENTS, AMBER, FONT_DIR, FONTS, GREEN, MODE_CARDS, ControlPanel, PanelView, action_name
-from .detectors import AsyncRecognizer, detector_status
+from .detectors import AsyncRecognizer, create_meme_detector, detector_status
 from .effects.naruto import load_log
 from .i18n import t
 from .models import SEGMENTER_MODEL, download_models
@@ -84,6 +84,7 @@ def self_test() -> int:
     create_segmenter().close()
     for mode in MODES:
         create_recognizer(mode).close()
+    create_meme_detector().close()
     print(f"[VanishCam] {t('selftest.ok')}")
     return 0
 

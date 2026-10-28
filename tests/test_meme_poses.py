@@ -1,7 +1,10 @@
 import unittest
+from types import SimpleNamespace
+from unittest.mock import Mock
 
+from vanishcam.detectors import MemePoseDetector
 from vanishcam.meme_poses import GESTURES, POSES, match_gesture
-from .hand_fixtures import make_hand
+from .hand_fixtures import make_face, make_hand
 
 # A face in the middle of the frame, normalized (x1, y1, x2, y2).
 FACE = (0.4, 0.2, 0.6, 0.5)
@@ -65,6 +68,25 @@ class MemePoseTests(unittest.TestCase):
             GESTURES,
             ("thumbs_up", "hands_behind_head", "timeout", "calm", "hands_on_face", "prayer", "pointing_at_self", "hearing"),
         )
+
+
+class MemeDetectorTests(unittest.TestCase):
+    def test_face_is_remembered_and_only_enabled_gestures_match(self):
+        face, hands = Mock(), Mock()
+        face.detect_for_video.return_value = SimpleNamespace(face_landmarks=[make_face(*FACE)])
+        hands.detect_for_video.return_value = SimpleNamespace(hand_landmarks=[fist_thumb_up()])
+        detector = MemePoseDetector(face, hands)
+        detector.enabled = frozenset({"thumbs_up"})
+        self.assertEqual(detector.recognize(object(), 0), "thumbs_up")
+        face.detect_for_video.return_value = SimpleNamespace(face_landmarks=[])
+        self.assertEqual(detector.recognize(object(), 1000), "thumbs_up")  # Face hidden for 1 s: remembered.
+        self.assertIsNone(detector.recognize(object(), 2300))  # Too long ago.
+        detector.enabled = frozenset()
+        face.detect_for_video.return_value = SimpleNamespace(face_landmarks=[make_face(*FACE)])
+        self.assertIsNone(detector.recognize(object(), 2400))
+        detector.close()
+        face.close.assert_called_once()
+        hands.close.assert_called_once()
 
 
 if __name__ == "__main__":
