@@ -9,3 +9,4 @@ models/selfie_segmenter_landscape.tflite
 *.part
 /build/
 /dist/
+.superpowers/

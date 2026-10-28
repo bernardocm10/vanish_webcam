@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import threading
 from dataclasses import replace
+from pathlib import Path
 from typing import Callable
 
 import mediapipe as mp
@@ -21,67 +22,72 @@ from .models import FACE_MODEL, GESTURE_MODEL, HAND_MODEL
 GESTURE_INTERVAL_SECONDS = 0.14
 
 
-def create_recognizer(
-    mode: str = "normal",
-) -> MultiViewGestureRecognizer | MultiViewHandLandmarker | GokuPoseDetector:
-    if mode in ("goku", "particles", "ash"):
-        for model in (HAND_MODEL, FACE_MODEL):
-            if not model.is_file():
-                raise RuntimeError(t("models.missing", path=model))
-        face_options = vision.FaceLandmarkerOptions(
-            base_options=python.BaseOptions(model_asset_path=str(FACE_MODEL)),
-            running_mode=vision.RunningMode.VIDEO,
-            num_faces=1,
-            min_face_detection_confidence=0.4,
-            min_face_presence_confidence=0.4,
-            min_tracking_confidence=0.4,
-        )
-        hand_options = vision.HandLandmarkerOptions(
-            base_options=python.BaseOptions(model_asset_path=str(HAND_MODEL)),
-            running_mode=vision.RunningMode.VIDEO,
-            num_hands=2,
-            min_hand_detection_confidence=0.35,
-            min_hand_presence_confidence=0.35,
-            min_tracking_confidence=0.45,
-        )
-        face = vision.FaceLandmarker.create_from_options(face_options)
-        try:
-            hands = vision.HandLandmarker.create_from_options(hand_options)
-        except Exception:
-            face.close()
-            raise
-        detector = {"particles": SalutePoseDetector, "ash": HandsUpPoseDetector}.get(mode, GokuPoseDetector)
-        return detector(face, hands)
-    if mode == "naruto":
-        if not HAND_MODEL.is_file():
-            raise RuntimeError(t("models.missing", path=HAND_MODEL))
-        options = vision.HandLandmarkerOptions(
-            base_options=python.BaseOptions(model_asset_path=str(HAND_MODEL)),
-            running_mode=vision.RunningMode.VIDEO,
-            num_hands=2,
-            min_hand_detection_confidence=0.35,
-            min_hand_presence_confidence=0.35,
-            min_tracking_confidence=0.45,
-        )
-        task_class = vision.HandLandmarker
-        wrapper_class = MultiViewHandLandmarker
-    else:
-        classifier_options = mp.tasks.components.processors.ClassifierOptions(
-            score_threshold=0.55,
-            category_allowlist=["Victory"],
-        )
-        options = vision.GestureRecognizerOptions(
-            base_options=python.BaseOptions(model_asset_path=str(GESTURE_MODEL)),
-            running_mode=vision.RunningMode.VIDEO,
-            num_hands=2,
-            min_hand_detection_confidence=0.35,
-            min_hand_presence_confidence=0.35,
-            min_tracking_confidence=0.5,
-            canned_gesture_classifier_options=classifier_options,
-        )
-        task_class = vision.GestureRecognizer
-        wrapper_class = MultiViewGestureRecognizer
+def require_models(*models: Path) -> None:
+    for model in models:
+        if not model.is_file():
+            raise RuntimeError(t("models.missing", path=model))
 
+
+def create_pose_detector(detector: type[GokuPoseDetector]) -> GokuPoseDetector:
+    """Face and hands on the same frame; the detector class decides which pose counts."""
+    require_models(HAND_MODEL, FACE_MODEL)
+    face_options = vision.FaceLandmarkerOptions(
+        base_options=python.BaseOptions(model_asset_path=str(FACE_MODEL)),
+        running_mode=vision.RunningMode.VIDEO,
+        num_faces=1,
+        min_face_detection_confidence=0.4,
+        min_face_presence_confidence=0.4,
+        min_tracking_confidence=0.4,
+    )
+    hand_options = vision.HandLandmarkerOptions(
+        base_options=python.BaseOptions(model_asset_path=str(HAND_MODEL)),
+        running_mode=vision.RunningMode.VIDEO,
+        num_hands=2,
+        min_hand_detection_confidence=0.35,
+        min_hand_presence_confidence=0.35,
+        min_tracking_confidence=0.45,
+    )
+    face = vision.FaceLandmarker.create_from_options(face_options)
+    try:
+        hands = vision.HandLandmarker.create_from_options(hand_options)
+    except Exception:
+        face.close()
+        raise
+    return detector(face, hands)
+
+
+def create_hand_landmarker() -> MultiViewHandLandmarker:
+    require_models(HAND_MODEL)
+    options = vision.HandLandmarkerOptions(
+        base_options=python.BaseOptions(model_asset_path=str(HAND_MODEL)),
+        running_mode=vision.RunningMode.VIDEO,
+        num_hands=2,
+        min_hand_detection_confidence=0.35,
+        min_hand_presence_confidence=0.35,
+        min_tracking_confidence=0.45,
+    )
+    return _multi_view(vision.HandLandmarker, options, MultiViewHandLandmarker)
+
+
+def create_gesture_recognizer() -> MultiViewGestureRecognizer:
+    classifier_options = mp.tasks.components.processors.ClassifierOptions(
+        score_threshold=0.55,
+        category_allowlist=["Victory"],
+    )
+    options = vision.GestureRecognizerOptions(
+        base_options=python.BaseOptions(model_asset_path=str(GESTURE_MODEL)),
+        running_mode=vision.RunningMode.VIDEO,
+        num_hands=2,
+        min_hand_detection_confidence=0.35,
+        min_hand_presence_confidence=0.35,
+        min_tracking_confidence=0.5,
+        canned_gesture_classifier_options=classifier_options,
+    )
+    return _multi_view(vision.GestureRecognizer, options, MultiViewGestureRecognizer)
+
+
+def _multi_view(task_class, options, wrapper_class):
+    """The VIDEO task for tracking, plus an IMAGE one for the rotated and cropped retries."""
     primary = task_class.create_from_options(options)
     try:
         alternate = task_class.create_from_options(
@@ -424,15 +430,6 @@ class AsyncRecognizer:
         self.wake.set()
         self.thread.join(timeout=2.0)
         self.close_detector()
-
-
-def detection_function(mode: str, recognizer) -> Callable[[mp.Image, int], object]:
-    if mode == "naruto":
-        return recognizer.recognize_joined_hands
-    if mode in ("goku", "particles", "ash"):
-        return recognizer.recognize_pose
-    # Looked up on every call (not bound here) so the tests can replace it.
-    return lambda image, timestamp_ms: recognize_gesture(recognizer, image, timestamp_ms)
 
 
 def detector_status(recognizer, result) -> str:

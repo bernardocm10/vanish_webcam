@@ -19,6 +19,7 @@ from vanishcam.control_panel import (
 )
 from .test_video_output import InlineRecognizer, app_mocks, arguments, video_clock
 from vanishcam.i18n import t
+from vanishcam.modes import MODES
 from vanishcam.user_data import MAX_GALLERY, Settings, UserData
 
 
@@ -74,6 +75,13 @@ class UserDataTests(unittest.TestCase):
 
 
 class PanelRendererTests(unittest.TestCase):
+    def test_panel_and_keys_follow_the_registry_order(self):
+        order = ["normal", "naruto", "goku", "particles", "ash"]
+        self.assertEqual(list(MODES), order)
+        self.assertEqual([card.key for card in MODE_CARDS], order)
+        for number, name in enumerate(order, start=1):
+            self.assertEqual(app.KEY_ACTIONS[ord(str(number))], ("mode", name))
+
     def setUp(self):
         self.folder = Path(self.enterContext(tempfile.TemporaryDirectory()))
         self.gallery = tuple(write_image(self.folder / f"bg{i}.png", 40 * i) for i in range(3))

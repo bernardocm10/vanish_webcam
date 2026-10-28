@@ -20,6 +20,7 @@ import numpy as np
 from PIL import Image, ImageDraw, ImageFont, ImageOps
 
 from .i18n import t
+from .modes import MODES
 from .paths import FONT_DIR
 from .user_data import pick_image_file
 
@@ -73,7 +74,7 @@ class ModeCard:
         return t(f"mode.{self.key}.hint")
 
 
-MODE_CARDS = tuple(ModeCard(key) for key in ("normal", "naruto", "goku", "particles", "ash"))
+MODE_CARDS = tuple(ModeCard(key) for key in MODES)
 # While the effect runs the lamp turns red, like the tally of a camera on air.
 ACCENTS = {card.key: TALLY for card in MODE_CARDS}
 ADD_TILE = "add"

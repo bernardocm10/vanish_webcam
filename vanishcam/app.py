@@ -11,6 +11,7 @@ import sys
 import time
 from contextlib import ExitStack
 from dataclasses import dataclass
+from functools import partial
 from pathlib import Path
 
 import cv2
@@ -24,14 +25,13 @@ from .camera import (
 )
 from .cli import parse_args
 from .control_panel import ACCENTS, AMBER, FONT_DIR, FONTS, GREEN, MODE_CARDS, ControlPanel, PanelView
-from .detectors import AsyncRecognizer, create_recognizer, detection_function, detector_status
-from .effects.goku import SOUND_NAME as GOKU_SOUND_NAME, sound_path
+from .detectors import AsyncRecognizer, detector_status
 from .effects.naruto import load_log
 from .i18n import t
-from .models import FACE_MODEL, GESTURE_MODEL, HAND_MODEL, SEGMENTER_MODEL, download_models
+from .models import SEGMENTER_MODEL, download_models
 from .modes import MODES, FrameInfo, Mode
 from .segmentation import PersonSegmenter, create_segmenter
-from .sound import SOUND_PATH, VanishSound
+from .sound import VanishSound
 from .user_data import Settings, UserData
 from .virtual_camera import open_virtual_camera, send_virtual_frame
 
@@ -68,8 +68,9 @@ def set_fullscreen(enabled: bool) -> None:
 def self_test() -> int:
     """Check bundled resources and model initialization without opening a webcam."""
     fonts = tuple(FONT_DIR / names[0] for names in FONTS.values())
-    goku_sound = sound_path() or Path(GOKU_SOUND_NAME)  # Reported by name when missing.
-    required = (SEGMENTER_MODEL, GESTURE_MODEL, HAND_MODEL, FACE_MODEL, SOUND_PATH, goku_sound, *fonts)
+    models = dict.fromkeys(model for mode in MODES.values() for model in mode.models)
+    sounds = dict.fromkeys(path for mode in MODES.values() if (path := mode.sound_file()) is not None)
+    required = (SEGMENTER_MODEL, *models, *sounds, *fonts)
     missing = [path.name for path in required if not path.is_file()]
     if missing:
         raise RuntimeError(t("selftest.missing", files=", ".join(missing)))
@@ -116,20 +117,24 @@ def open_call_mic(args: argparse.Namespace, resources: ExitStack) -> VirtualMic 
     return mic
 
 
-def open_sound(mode: str, mic: VirtualMic | None = None):
-    if mode == "naruto":
-        path = SOUND_PATH
-    elif mode == "goku":
-        path = sound_path()
-        if path is None:
-            print(f"[Goku] {t('goku.no_sound', name=GOKU_SOUND_NAME)}")
-            return None
-        print(f"[Goku] {t('goku.sound', name=path.name)}")
-    else:
+def open_sound(name: str, mic: VirtualMic | None = None):
+    mode = MODES[name]
+    path = mode.sound_file()
+    if path is None:
         return None
-    sound = VanishSound(path) if mode == "goku" else VanishSound()
+    if mode.sound_optional:
+        title = t(f"mode.{name}.title")
+        if not path.is_file():
+            print(f"[{title}] {t('sound.optional_missing', name=path.name)}")
+            return None
+        print(f"[{title}] {t('sound.found', name=path.name)}")
+    sound = VanishSound(path)
     # With the virtual microphone the effect is heard in the call too.
     return CallSound(sound, mic, path) if mic is not None else sound
+
+
+def create_recognizer(name: str):
+    return MODES[name].create_recognizer()
 
 
 class EffectRuntime:
@@ -139,10 +144,10 @@ class EffectRuntime:
     """
 
     def __init__(self, name: str, segment: PersonSegmenter, mic: VirtualMic | None):
-        download_models(name)
+        download_models(MODES[name].models)
         self.name = name
         self.recognizer = create_recognizer(name)
-        self.detector = AsyncRecognizer(detection_function(name, self.recognizer), self.recognizer.close)
+        self.detector = AsyncRecognizer(partial(MODES[name].detect, self.recognizer), self.recognizer.close)
         try:
             self.sound = open_sound(name, mic)
         except Exception:
@@ -225,7 +230,7 @@ def run_camera(args: argparse.Namespace, resources: ExitStack, mode_name: str | 
     user_data.save(Settings(mode_name, chosen, camera_name(), detached))
     gallery = tuple(user_data.gallery())
 
-    download_models(mode_name)
+    download_models(MODES[mode_name].models)
 
     def open_capture() -> cv2.VideoCapture:
         # Reads camera_index when called: reopening after a switch opens the new webcam.

@@ -4,7 +4,7 @@ from unittest.mock import Mock
 
 import numpy as np
 
-from vanishcam.detectors import SalutePoseDetector, detection_function
+from vanishcam.detectors import SalutePoseDetector
 from vanishcam.effects.goku import CHEEK_LEFT, CHEEK_RIGHT, FOREHEAD_TOP, NOSE_BRIDGE
 from vanishcam.modes import FrameInfo, ParticlesMode
 from vanishcam.effects.particles import (
@@ -112,9 +112,9 @@ class SalutePoseTests(unittest.TestCase):
         self.assertFalse(detector.recognize_pose(image, 1600))
 
     def test_particles_mode_uses_the_salute_detector(self):
-        recognizer = Mock()
-        detect = detection_function("particles", recognizer)
-        self.assertEqual(detect, recognizer.recognize_pose)
+        recognizer, image = Mock(), object()
+        self.assertIs(ParticlesMode.detect(recognizer, image, 0), recognizer.recognize_pose.return_value)
+        recognizer.recognize_pose.assert_called_once_with(image, 0)
 
 
 class ParticlesModeTests(unittest.TestCase):

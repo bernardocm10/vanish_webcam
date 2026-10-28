@@ -1,24 +1,33 @@
 """One class per effect: when it triggers, how it animates, what stays on screen.
 
 The video loop in app.py only handles the camera, the background and the
-keys. A mode receives detection results (computed off the video thread) and
-draws each frame. To add an effect, subclass Mode and register it in MODES.
+keys. A mode declares what it needs (models, recognizer, sound), receives
+detection results (computed off the video thread) and draws each frame. To add
+an effect, subclass Mode and register it in MODES.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Callable
 
 import cv2
+import mediapipe as mp
 import numpy as np
+
+from . import detectors
+from .detectors import (
+    GokuPoseDetector, HandsUpPoseDetector, SalutePoseDetector, create_gesture_recognizer, create_hand_landmarker,
+    create_pose_detector,
+)
 
 from .effects.ash import (
     EFFECT_SECONDS as ASH_EFFECT_SECONDS, HANDS_UP_HOLD_SECONDS, make_ash, render_ash, render_remains,
 )
 from .effects.goku import (
-    EFFECT_SECONDS as GOKU_EFFECT_SECONDS, HoldTracker, make_speed_lines,
-    render_teleport, teleport_region,
+    EFFECT_SECONDS as GOKU_EFFECT_SECONDS, SOUND_NAME as GOKU_SOUND_NAME, HoldTracker, make_speed_lines,
+    render_teleport, sound_path, teleport_region,
 )
 from .effects.naruto import (
     EFFECT_SECONDS as NARUTO_EFFECT_SECONDS, HOLD_SECONDS as NARUTO_HOLD_SECONDS,
@@ -31,6 +40,9 @@ from .effects.particles import (
     render_particles,
 )
 from .i18n import t
+from .models import FACE_MODEL, GESTURE_MODEL, HAND_MODEL
+from .paths import ASSETS_DIR
+from .sound import SOUND_PATH
 
 # BGR frame, timestamp in ms -> person mask (0..1) at full resolution.
 Segment = Callable[[np.ndarray, int], np.ndarray]
@@ -48,10 +60,30 @@ class Mode:
     """Phases: ready -> vanishing -> vanished (-> appearing -> ready, Goku only)."""
 
     name = ""
+    # MediaPipe models the detector needs, besides the segmenter.
+    models: tuple[Path, ...] = ()
     detect_interval = 0.14
     # V and R work from the keyboard; Goku turns them off: only the gesture counts.
     manual_keys = True
     detect_while_vanished = False
+
+    @staticmethod
+    def create_recognizer():
+        """The recognizer this effect detects with, run off the video thread."""
+        raise NotImplementedError
+
+    @staticmethod
+    def detect(recognizer, image: mp.Image, timestamp_ms: int):
+        """One detection on the recognizer thread; the result goes to on_detection."""
+        raise NotImplementedError
+
+    @staticmethod
+    def sound_file() -> Path | None:
+        """Played when vanishing; None: silent."""
+        return None
+
+    # A missing optional sound leaves the effect silent instead of stopping it.
+    sound_optional = False
 
     def __init__(self, segment: Segment, sound=None):
         self.segment = segment
@@ -110,6 +142,13 @@ class VSignMode(Mode):
 
 class NormalMode(VSignMode):
     name = "normal"
+    models = (GESTURE_MODEL,)
+    create_recognizer = staticmethod(create_gesture_recognizer)
+
+    @staticmethod
+    def detect(recognizer, image: mp.Image, timestamp_ms: int):
+        # Looked up on every call (not bound here) so the tests can replace it.
+        return detectors.recognize_gesture(recognizer, image, timestamp_ms)
 
     def __init__(self, segment: Segment, sound=None):
         super().__init__(segment, sound)
@@ -151,6 +190,16 @@ def half_resolution_rgb(frame: np.ndarray) -> np.ndarray:
 
 class ParticlesMode(Mode):
     name = "particles"
+    models = (HAND_MODEL, FACE_MODEL)
+    pose_detector: type[GokuPoseDetector] = SalutePoseDetector
+
+    @classmethod
+    def create_recognizer(cls):
+        return create_pose_detector(cls.pose_detector)
+
+    @staticmethod
+    def detect(recognizer, image: mp.Image, timestamp_ms: int):
+        return recognizer.recognize_pose(image, timestamp_ms)
     detect_interval = 0.066
 
     def __init__(self, segment: Segment, sound=None):
@@ -194,6 +243,7 @@ class AshMode(ParticlesMode):
     """Hands up: the silhouette turns to ash, crumbles, and the pile stays until R."""
 
     name = "ash"
+    pose_detector = HandsUpPoseDetector
 
     def __init__(self, segment: Segment, sound=None):
         super().__init__(segment, sound)
@@ -233,6 +283,13 @@ class AshMode(ParticlesMode):
 
 class NarutoMode(Mode):
     name = "naruto"
+    models = (HAND_MODEL,)
+    create_recognizer = staticmethod(create_hand_landmarker)
+    sound_file = staticmethod(lambda: SOUND_PATH)
+
+    @staticmethod
+    def detect(recognizer, image: mp.Image, timestamp_ms: int):
+        return recognizer.recognize_joined_hands(image, timestamp_ms)
     detect_interval = 0.08
 
     def __init__(self, segment: Segment, sound=None):
@@ -290,6 +347,22 @@ class NarutoMode(Mode):
 
 class GokuMode(Mode):
     name = "goku"
+    models = (HAND_MODEL, FACE_MODEL)
+    pose_detector: type[GokuPoseDetector] = GokuPoseDetector
+    sound_optional = True
+
+    @staticmethod
+    def sound_file() -> Path | None:
+        # Replaceable by the user, in any letter case; named in the message when missing.
+        return sound_path() or ASSETS_DIR / GOKU_SOUND_NAME
+
+    @classmethod
+    def create_recognizer(cls):
+        return create_pose_detector(cls.pose_detector)
+
+    @staticmethod
+    def detect(recognizer, image: mp.Image, timestamp_ms: int):
+        return recognizer.recognize_pose(image, timestamp_ms)
     detect_interval = 0.066
     manual_keys = False
     detect_while_vanished = True
@@ -361,4 +434,5 @@ class GokuMode(Mode):
         return display
 
 
-MODES: dict[str, type[Mode]] = {mode.name: mode for mode in (NormalMode, NarutoMode, ParticlesMode, GokuMode, AshMode)}
+# In panel order: also the 1-5 keys.
+MODES: dict[str, type[Mode]] = {mode.name: mode for mode in (NormalMode, NarutoMode, GokuMode, ParticlesMode, AshMode)}

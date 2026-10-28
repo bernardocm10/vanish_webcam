@@ -38,8 +38,8 @@ prototypes/         experiments that are not part of the app
 | `vanishcam/models.py` | MediaPipe model paths and downloads |
 | `vanishcam/segmentation.py` | The person mask, once per frame |
 | `vanishcam/background.py` | Picture backgrounds and keeping the real room up to date |
-| `vanishcam/detectors.py` | Gesture and pose detection for each mode, and `AsyncRecognizer` |
-| `vanishcam/modes.py` | One class per effect: `NormalMode`, `NarutoMode`, `GokuMode`, `ParticlesMode`, `AshMode` |
+| `vanishcam/detectors.py` | The recognizers (gesture, hands, face and hands) and `AsyncRecognizer` |
+| `vanishcam/modes.py` | One class per effect, declaring its models, recognizer and sound: `NormalMode`, `NarutoMode`, `GokuMode`, `ParticlesMode`, `AshMode`; `MODES` sets the panel order |
 | `vanishcam/effects/` | `normal.py`, `naruto.py`, `goku.py`, `particles.py`, `ash.py`: drawing for each effect |
 | `vanishcam/control_panel.py` | Draws the panel with Pillow and turns clicks into actions |
 | `vanishcam/user_data.py` | Saved preferences and the background gallery |
@@ -57,11 +57,11 @@ A few things worth knowing:
 
 ## Adding an effect
 
-1. Put its drawing and pose detection in `vanishcam/effects/<name>.py`.
-2. Subclass `Mode` in `vanishcam/modes.py` and register it in `MODES`.
-3. Add its detector in `create_recognizer` and `detection_function` in `vanishcam/detectors.py`.
-4. Add its row to `MODE_CARDS` in `vanishcam/control_panel.py`.
-5. Add its `mode.<name>.title`, `.hint` and `.instructions` texts to both languages in `vanishcam/i18n.py`.
+1. Put its drawing and pose in `vanishcam/effects/<name>.py`.
+2. Subclass `Mode` in `vanishcam/modes.py` and declare what it needs: `models`, `create_recognizer` and `detect`, and optionally `sound_file` and `sound_optional`. Register it in `MODES` at the position it should have in the panel: that order also sets its `1`–`5` key.
+3. Add its `mode.<name>.title`, `.hint` and `.instructions` texts to both languages in `vanishcam/i18n.py`.
+
+The panel, the model downloads, the sound, and the self-test read everything else from `MODES`.
 
 ## Language conventions
 

@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import urllib.error
 import urllib.request
+from pathlib import Path
 
 from .i18n import t
 from .paths import MODEL_DIR
@@ -27,11 +28,14 @@ MODEL_URLS = {
 }
 
 
-def download_models(mode: str = "normal") -> None:
+def download_models(models: tuple[Path, ...] | None = None) -> None:
+    """The segmenter, plus the models an effect declares (the versioned ones are already here).
+
+    None downloads every model, as the EXE build needs.
+    """
     MODEL_DIR.mkdir(parents=True, exist_ok=True)
     for destination, url in MODEL_URLS.items():
-        # Only Normal uses the gesture recognizer; the others use hands and face.
-        if mode != "normal" and destination == GESTURE_MODEL:
+        if models is not None and destination != SEGMENTER_MODEL and destination not in models:
             continue
         if destination.exists() and destination.stat().st_size > 100_000:
             continue
