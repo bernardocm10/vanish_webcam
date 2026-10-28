@@ -68,7 +68,8 @@ def set_fullscreen(enabled: bool) -> None:
 def self_test() -> int:
     """Check bundled resources and model initialization without opening a webcam."""
     fonts = tuple(FONT_DIR / names[0] for names in FONTS.values())
-    required = (SEGMENTER_MODEL, GESTURE_MODEL, HAND_MODEL, FACE_MODEL, SOUND_PATH, *fonts)
+    goku_sound = sound_path() or Path(GOKU_SOUND_NAME)  # Reported by name when missing.
+    required = (SEGMENTER_MODEL, GESTURE_MODEL, HAND_MODEL, FACE_MODEL, SOUND_PATH, goku_sound, *fonts)
     missing = [path.name for path in required if not path.is_file()]
     if missing:
         raise RuntimeError(t("selftest.missing", files=", ".join(missing)))

@@ -13,6 +13,7 @@ resources = [
     (root / "models" / "selfie_segmenter_landscape.tflite", "models"),
     (root / "assets" / "substitution_log.png", "assets"),
     (root / "assets" / "vanish.MP3", "assets"),
+    (root / "assets" / "teleport.mp3", "assets"),
     (root / "assets" / "fonts" / "IBMPlexMono-Regular.ttf", "assets/fonts"),
     (root / "assets" / "fonts" / "IBMPlexMono-SemiBold.ttf", "assets/fonts"),
     (root / "assets" / "fonts" / "IBMPlexSansCondensed-SemiBold.ttf", "assets/fonts"),

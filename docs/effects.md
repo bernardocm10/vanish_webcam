@@ -34,7 +34,7 @@ Comic-style vertical speed lines run across your silhouette just before you tele
 
 - If you break the pose, the countdown starts over. The terminal shows the countdown.
 - **`V` and `R` do not work in this mode:** the gesture is the only way to vanish and reappear.
-- **Sound (optional):** add your own `assets/teleport.MP3` (not included) and it plays on both disappearance and reappearance.
+- **Sound:** `assets/teleport.mp3` plays on both disappearance and reappearance. Replace it with your own MP3 of the same name to change it.
 - Uses `face_landmarker.task` to find your forehead and `hand_landmarker.task` to track your fingers. Particles uses the same two models to find your brow and your hand.
 
 ## 4 · Particles
