@@ -10,17 +10,33 @@ From the project folder:
 .venv/bin/python -m unittest
 ```
 
+To run the app from source: `.venv/bin/python -m vanishcam`.
+
 ## How the code is organized
+
+```
+vanishcam/          the app, a Python package
+  effects/          drawing and pose detection for each effect
+assets/             images, sounds and fonts bundled with the app
+models/             MediaPipe models (the hand and face ones are versioned; the rest download on first run)
+tests/              unittest suite
+scripts/windows/    start.bat and its variants, build.bat
+scripts/linux/      teams.sh, the GNOME launcher and its installer
+packaging/          PyInstaller spec for the Windows EXE
+docs/               these guides
+prototypes/         experiments that are not part of the app
+```
 
 | File | Responsibility |
 | --- | --- |
-| `vanish_cam.py` | Camera, background capture and updates, keyboard, virtual webcam output, and the main loop |
-| `modes.py` | One class per effect: `NormalMode`, `NarutoMode`, `GokuMode`, `ParticlesMode`, `AshMode` |
-| `normal_effect.py`, `naruto_effect.py`, `goku_effect.py`, `particles_effect.py`, `ash_effect.py` | Drawing for each effect |
-| `control_panel.py` | Draws the panel with Pillow and turns clicks into actions |
-| `user_data.py` | Saved preferences and the background gallery |
-| `call_audio.py`, `vanish_sound.py` | Effect sounds and the VanishCam Mic |
-| `i18n.py` | Every text the user reads, in English and Portuguese, and the language detection |
+| `vanishcam/app.py` | Camera, background capture and updates, keyboard, virtual webcam output, and the main loop |
+| `vanishcam/modes.py` | One class per effect: `NormalMode`, `NarutoMode`, `GokuMode`, `ParticlesMode`, `AshMode` |
+| `vanishcam/effects/` | `normal.py`, `naruto.py`, `goku.py`, `particles.py`, `ash.py`: drawing for each effect |
+| `vanishcam/control_panel.py` | Draws the panel with Pillow and turns clicks into actions |
+| `vanishcam/user_data.py` | Saved preferences and the background gallery |
+| `vanishcam/call_audio.py`, `vanishcam/sound.py` | Effect sounds and the VanishCam Mic |
+| `vanishcam/i18n.py` | Every text the user reads, in English and Portuguese, and the language detection |
+| `vanishcam/paths.py` | Where the bundled assets and models are, from source and from the EXE |
 
 A few things worth knowing:
 
@@ -30,18 +46,19 @@ A few things worth knowing:
 
 ## Adding an effect
 
-1. Subclass `Mode` in `modes.py` and register it in `MODES`.
-2. Add its detector in `create_recognizer` and `detection_function` in `vanish_cam.py`.
-3. Add its row to `MODE_CARDS` in `control_panel.py`.
-4. Add its `mode.<name>.title`, `.hint` and `.instructions` texts to both languages in `i18n.py`.
+1. Put its drawing and pose detection in `vanishcam/effects/<name>.py`.
+2. Subclass `Mode` in `vanishcam/modes.py` and register it in `MODES`.
+3. Add its detector in `create_recognizer` and `detection_function` in `vanishcam/app.py`.
+4. Add its row to `MODE_CARDS` in `vanishcam/control_panel.py`.
+5. Add its `mode.<name>.title`, `.hint` and `.instructions` texts to both languages in `vanishcam/i18n.py`.
 
 ## Language conventions
 
-Code, comments, docs and commit messages are in English. Anything the user reads in the app goes through `t()` in `i18n.py`, with an English and a Portuguese text; `test_i18n.py` fails if a key or a `{placeholder}` is missing in one of them.
+Code, comments, docs and commit messages are in English. Anything the user reads in the app goes through `t()` in `vanishcam/i18n.py`, with an English and a Portuguese text; `tests/test_i18n.py` fails if a key or a `{placeholder}` is missing in one of them.
 
 ## Building the Windows EXE
 
-Run `build-windows.bat` to build a standalone `VanishCam.exe` that runs without Python. The build is defined in `VanishCam.spec` (PyInstaller) and bundles the models, sounds, the log image, and the panel fonts.
+Run `scripts\windows\build.bat` to build a standalone `dist\VanishCam.exe` that runs without Python. The build is defined in `packaging/VanishCam.spec` (PyInstaller) and bundles the models, sounds, the log image, and the panel fonts.
 
 ## Fonts
 

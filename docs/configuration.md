@@ -4,7 +4,7 @@
 
 ## Command-line options
 
-Pass them after the start command, for example `.venv/bin/python vanish_cam.py --camera 1` or `start.bat --camera 1`.
+Pass them after the start command, for example `.venv/bin/python -m vanishcam --camera 1` or `scripts\windows\start.bat --camera 1`.
 
 | Option | What it does |
 | --- | --- |
