@@ -5,6 +5,7 @@ from unittest.mock import patch
 
 import cv2
 import numpy as np
+from PIL import Image
 
 from vanishcam.memes import SHOW_SECONDS, MemeGesture, MemeLayer, Memes, scale_at
 
@@ -99,6 +100,24 @@ class MemeLayerTests(unittest.TestCase):
             self.fire(layer, 5.0)
             layer.render(self.frame, 6.0)
         self.assertEqual(printed.call_count, 1)  # Said once, not on every frame.
+
+    def test_reads_pictures_where_opencv_cannot(self):
+        # cv2.imread fails on Windows paths with accents (C:\\Users\\João\\...).
+        layer = MemeLayer()
+        self.fire(layer)
+        with patch("vanishcam.memes.cv2.imread", return_value=None):
+            out = layer.render(self.frame, FIRED + 1.0)
+        self.assertTrue((out[240, 320] == 255).all())
+
+    def test_phone_photos_are_turned_upright(self):
+        photo = self.folder / "phone.jpg"
+        exif = Image.Exif()
+        exif[0x0112] = 6  # Orientation: shot sideways, to be turned 90 degrees.
+        Image.new("RGB", (200, 100), "white").save(photo, exif=exif)
+        layer = MemeLayer()
+        self.fire(layer, memes=Memes().with_gesture("thumbs_up", image=photo, on=True))
+        _, width, height = self.white(layer.render(self.frame, FIRED + 1.0))
+        self.assertGreater(height, width)  # Upright: taller than wide.
 
     def test_clear(self):
         layer = MemeLayer()

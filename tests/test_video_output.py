@@ -394,7 +394,13 @@ class MemeLoopTests(unittest.TestCase):
         capture.read.side_effect = read
         answers = list(results)
         detector = Mock()
-        detector.recognize.side_effect = lambda image, timestamp_ms: answers.pop(0) if answers else None
+        def recognize(image, timestamp_ms):
+            answer = answers.pop(0) if answers else None
+            if isinstance(answer, Exception):
+                raise answer
+            return answer
+
+        detector.recognize.side_effect = recognize
         recognizer = Mock()
         recognizer.recognize_joined_hands.return_value = False
         camera = Mock(width=40, height=24)
@@ -449,6 +455,13 @@ class MemeLoopTests(unittest.TestCase):
         self.assertTrue((sent[-1][12, 20] == 100).all())  # ...gone right after the switch.
         self.assertEqual(self.detector.close.call_count, 1)  # Closed then, not again on exit.
         self.assertEqual(self.detector.recognize.call_count, 9)  # No detection after it.
+
+    def test_a_detection_error_turns_memes_off_but_not_the_app(self):
+        memes = Memes().with_gesture("thumbs_up", image=self.white_png, on=True)
+        _, sent = self.run_memes(memes, results=[RuntimeError("model crashed")] + [None] * 5)
+        self.assertEqual(len(sent), 7)  # Every frame still went to the call.
+        self.assertEqual(self.detector.close.call_count, 1)
+        self.assertEqual(self.detector.recognize.call_count, 1)  # No more detections after the error.
 
     def test_meme_never_changes_the_effect_frame(self):
         # Naruto vanishes with V at the second frame and keeps its frozen frame; a meme pops up

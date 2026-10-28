@@ -11,6 +11,7 @@ from pathlib import Path
 
 import cv2
 import numpy as np
+from PIL import Image, ImageOps
 
 from .effects.goku import HoldTracker
 from .i18n import t
@@ -184,18 +185,19 @@ class MemeLayer:
         key = (path, width, height)
         if key not in self.fitted:
             self.fitted[key] = None
-            image = cv2.imread(str(path), cv2.IMREAD_UNCHANGED)
-            if image is None or image.size == 0:
+            # Pillow, not cv2.imread: it reads paths with accents on Windows (C:\Users\João)
+            # and turns phone photos upright from their EXIF orientation.
+            try:
+                with Image.open(path) as source:
+                    rgba = np.asarray(ImageOps.exif_transpose(source).convert("RGBA"))
+            except (OSError, ValueError, Image.DecompressionBombError):
+                rgba = None
+            if rgba is None or rgba.size == 0:
                 if path not in self.warned:
                     self.warned.add(path)
                     print(f"[Memes] {t('memes.unreadable', name=path.name)}")
                 return None
-            if image.ndim == 2:
-                image = cv2.cvtColor(image, cv2.COLOR_GRAY2BGRA)
-            elif image.shape[2] == 3:
-                image = cv2.cvtColor(image, cv2.COLOR_BGR2BGRA)
-            if image.dtype != np.uint8:
-                image = cv2.convertScaleAbs(image, alpha=255.0 / max(1, int(np.iinfo(image.dtype).max)))
+            image = cv2.cvtColor(rgba, cv2.COLOR_RGBA2BGRA)
             fit = min(BOX * width / image.shape[1], BOX * height / image.shape[0])
             size = (max(1, round(image.shape[1] * fit)), max(1, round(image.shape[0] * fit)))
             self.fitted[key] = cv2.resize(image, size, interpolation=cv2.INTER_AREA)

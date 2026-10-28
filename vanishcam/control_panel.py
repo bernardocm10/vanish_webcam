@@ -570,7 +570,8 @@ class PanelRenderer:
             size = (MEME_THUMB[0] * SCALE, MEME_THUMB[1] * SCALE)
             try:
                 with Image.open(path) as image:
-                    picture = ImageOps.contain(image.convert("RGBA"), size, Image.Resampling.LANCZOS)
+                    upright = ImageOps.exif_transpose(image)  # As the meme will show in the call.
+                    picture = ImageOps.contain(upright.convert("RGBA"), size, Image.Resampling.LANCZOS)
                 tile = Image.new("RGB", size, KEY)
                 tile.paste(picture, ((size[0] - picture.width) // 2, (size[1] - picture.height) // 2), picture)
                 self.thumbs[key] = tile

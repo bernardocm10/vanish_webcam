@@ -588,13 +588,21 @@ def run_camera(args: argparse.Namespace, resources: ExitStack, mode_name: str | 
                             last_gesture_report = now
                     display = mode.render(FrameInfo(frame, background, now, elapsed_ms))
                     if meme_detector is not None:
-                        if now - state.last_meme_check >= MEME_INTERVAL and not meme_detector.busy:
-                            state.last_meme_check = now
-                            meme_recognizer.enabled = memes.active()
-                            meme_detector.submit(half_resolution_rgb(camera_frame), elapsed_ms)
-                        found = meme_detector.take_result()
-                        if found is not None:
-                            meme_layer.on_detection(found[0], now, memes)
+                        try:
+                            if now - state.last_meme_check >= MEME_INTERVAL and not meme_detector.busy:
+                                state.last_meme_check = now
+                                meme_recognizer.enabled = memes.active()
+                                meme_detector.submit(half_resolution_rgb(camera_frame), elapsed_ms)
+                            found = meme_detector.take_result()
+                        except Exception as error:
+                            # The memes stop; the effect and the call carry on.
+                            print(f"[Memes] {t('memes.failed', error=error)}")
+                            meme_detector.close()
+                            meme_recognizer = meme_detector = None
+                            meme_layer.clear()
+                        else:
+                            if found is not None:
+                                meme_layer.on_detection(found[0], now, memes)
                     # On a copy: the effect's own frames (a frozen vanished one) stay clean.
                     display = meme_layer.render(display, now)
 
