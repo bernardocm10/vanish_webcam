@@ -1,8 +1,9 @@
 """One class per effect: when it triggers, how it animates, what stays on screen.
 
 The video loop in app.py only handles the camera, the background and the
-keys. A mode receives detection results (computed off the video thread) and
-draws each frame. To add an effect, subclass Mode and register it in MODES.
+keys. A mode declares what it needs (models, recognizer, sound), receives
+detection results (computed off the video thread) and draws each frame. To add
+an effect, subclass Mode and register it in MODES.
 """
 
 from __future__ import annotations
@@ -433,4 +434,5 @@ class GokuMode(Mode):
         return display
 
 
-MODES: dict[str, type[Mode]] = {mode.name: mode for mode in (NormalMode, NarutoMode, ParticlesMode, GokuMode, AshMode)}
+# In panel order: also the 1-5 keys.
+MODES: dict[str, type[Mode]] = {mode.name: mode for mode in (NormalMode, NarutoMode, GokuMode, ParticlesMode, AshMode)}
