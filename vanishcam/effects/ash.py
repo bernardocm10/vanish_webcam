@@ -7,6 +7,7 @@ from dataclasses import dataclass
 import cv2
 import numpy as np
 
+from ..hand_geometry import extended_finger_count
 from .goku import face_reference
 
 # The ash spreads from the head down within ASH_SECONDS; the body then crumbles, also from
@@ -37,11 +38,7 @@ def hands_up_reference(face_landmarks, width: int, height: int) -> tuple[float, 
 
 def extended_fingers(points: np.ndarray) -> int:
     """Index to little finger whose tip is clearly farther from the wrist than its middle joint."""
-    wrist = points[0]
-    return sum(
-        np.linalg.norm(points[tip] - wrist) >= 1.15 * np.linalg.norm(points[pip] - wrist)
-        for tip, pip in ((8, 6), (12, 10), (16, 14), (20, 18))
-    )
+    return extended_finger_count(points, ratio=1.15)
 
 
 def hands_up_pose(hands, face, width: int, height: int) -> bool:
