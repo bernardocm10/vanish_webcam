@@ -41,7 +41,7 @@ prototypes/         experiments that are not part of the app
 | `vanishcam/effects/` | `normal.py`, `naruto.py`, `goku.py`, `particles.py`, `ash.py`: drawing for each effect |
 | `vanishcam/control_panel.py` | Draws the panel with Pillow and turns clicks into actions |
 | `vanishcam/user_data.py` | Saved preferences and the background gallery |
-| `vanishcam/call_audio.py`, `vanishcam/sound.py` | Effect sounds and the VanishCam Mic |
+| `vanishcam/call_audio.py`, `vanishcam/sound.py` | Effect sounds and the call microphone (PipeWire on Linux, VB-CABLE on Windows) |
 | `vanishcam/i18n.py` | Every text the user reads, in English and Portuguese, and the language detection |
 | `vanishcam/paths.py` | Where the bundled assets and models are, from source and from the EXE |
 

@@ -8,7 +8,7 @@ if errorlevel 1 (
   goto :error
 )
 
-py -3 -c "import PyInstaller, cv2, mediapipe, numpy, pyvirtualcam, pygame, PIL" >nul 2>nul
+py -3 -c "import PyInstaller, cv2, mediapipe, numpy, pyvirtualcam, pygame, PIL, sounddevice" >nul 2>nul
 if errorlevel 1 (
   echo Installing the build dependencies...
   py -3 -m pip install -r requirements.txt "pyinstaller>=6,<7"

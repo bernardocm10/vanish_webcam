@@ -32,7 +32,7 @@ if not exist "%VENV_PY%" (
   if errorlevel 1 goto :error
 )
 
-"%VENV_PY%" -c "import cv2, mediapipe, numpy, pyvirtualcam, pygame, PIL" >nul 2>nul
+"%VENV_PY%" -c "import cv2, mediapipe, numpy, pyvirtualcam, pygame, PIL, sounddevice" >nul 2>nul
 if errorlevel 1 (
   echo [VanishCam] %MSG_INSTALL%
   "%VENV_PY%" -m pip install --upgrade pip

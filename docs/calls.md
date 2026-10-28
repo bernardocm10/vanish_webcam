@@ -2,10 +2,11 @@
 
 [← Documentation](README.md)
 
-To use VanishCam in a call, the app sends its video to a **virtual webcam**, which you then pick as the camera in Teams, Zoom, Meet, or OBS.
+To use VanishCam in a call, the app sends its video to a **virtual webcam**, which you then pick as the camera in Teams, Discord, Zoom, Meet, or OBS. A virtual microphone can also send the effect sounds to the call.
 
 - [Linux and Microsoft Teams](#linux-and-microsoft-teams)
 - [Windows: virtual camera and OBS](#windows-virtual-camera-and-obs)
+- [Windows: call microphone with VB-CABLE](#windows-call-microphone-with-vb-cable)
 
 ## Linux and Microsoft Teams
 
@@ -57,7 +58,7 @@ To remove the launcher: `rm ~/.local/share/applications/vanishcam.desktop`.
 
 If [OBS Studio](https://obsproject.com/) is installed, the app automatically tries to open **OBS Virtual Camera**; the terminal shows the device name. Then select **OBS Virtual Camera** as the camera in your call app.
 
-- `scripts\windows\start-virtual.bat` starts the app and **requires** a virtual camera.
+- `scripts\windows\start-virtual.bat` starts the app, **requires** a virtual camera, and turns on the [call microphone](#windows-call-microphone-with-vb-cable) when VB-CABLE is installed.
 - OBS's own virtual camera must be **stopped** while VanishCam is sending video to it.
 
 ### Inside an OBS scene
@@ -77,3 +78,15 @@ As an alternative virtual video source, use [Unity Capture](https://github.com/s
 ```
 
 See the [pyvirtualcam documentation](https://github.com/letmaik/pyvirtualcam#supported-virtual-cameras) for all supported virtual cameras.
+
+## Windows: call microphone with VB-CABLE
+
+Windows cannot create a microphone without a driver, so the effect sounds reach the call through [VB-CABLE](https://vb-audio.com/Cable/), a free virtual audio cable.
+
+1. **Install VB-CABLE** and restart Windows. Then open the sound settings and check that your **speakers or headset are still the default output**: the installer sometimes makes *CABLE Input* the default, and then you hear nothing from your computer. VanishCam warns you in the terminal when that happens.
+2. **Start the app with `scripts\windows\start-virtual.bat`**, or pass `--call-audio`. It records your default microphone, adds the effect sounds, and plays the mix into *CABLE Input*.
+3. **In the call app, pick _CABLE Output (VB-Audio Virtual Cable)_ as the microphone.** In Discord: *User Settings → Voice & Video → Input Device*.
+
+Keep your real microphone as the Windows default input: VanishCam records from it. If VB-CABLE is missing, the app says so and carries on without the call microphone.
+
+Noise suppression in the call app (Discord's Krisp, Teams' noise suppression) may cut the effect sounds as noise: lower it or turn it off if the call does not hear them.

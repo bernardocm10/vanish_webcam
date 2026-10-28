@@ -15,7 +15,7 @@ import cv2
 import numpy as np
 
 from .background import fit_background, load_background_image, replace_background, update_background
-from .call_audio import MIC_DESCRIPTION, CallSound, VirtualMic
+from .call_audio import CallSound, VirtualMic, open_virtual_mic
 from .camera import CameraFeed, dim_for_card, open_camera, reconnecting_card
 from .cli import parse_args
 from .control_panel import ACCENTS, AMBER, FONT_DIR, FONTS, GREEN, MODE_CARDS, ControlPanel, PanelView
@@ -62,6 +62,8 @@ def self_test() -> int:
         raise RuntimeError(t("selftest.missing", files=", ".join(missing)))
     load_log()
     import pygame.mixer  # The distributed build must contain its MP3 decoder.
+    if sys.platform == "win32":
+        import sounddevice  # And PortAudio, for the call microphone through VB-CABLE.
     create_segmenter().close()
     for mode in MODES:
         create_recognizer(mode).close()
@@ -90,13 +92,13 @@ def open_call_mic(args: argparse.Namespace, resources: ExitStack) -> VirtualMic 
     if not args.call_audio:
         return None
     try:
-        mic = VirtualMic()
+        mic = open_virtual_mic()
     except (OSError, RuntimeError, subprocess.SubprocessError) as error:
         # Video matters more than audio: warn and carry on without the virtual microphone.
         print(f"[VanishCam Mic] {t('mic.unavailable', error=error)}")
         return None
     resources.callback(mic.close)
-    print(f"[VanishCam Mic] {t('mic.active', name=MIC_DESCRIPTION)}")
+    print(f"[VanishCam Mic] {t('mic.active', name=mic.description)}")
     return mic
 
 
