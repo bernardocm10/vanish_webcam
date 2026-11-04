@@ -10,7 +10,7 @@ The panel is styled like a broadcast control surface: a light faceplate, black i
 
 It follows your system language (see [Language](configuration.md#language)). This guide uses the English labels, with the Portuguese ones in parentheses.
 
-The panel has three tabs in its black top bar: **LIVE** (*AO VIVO*), where the app opens, with everything below; **MEMES**, with the [meme reactions](memes.md); and **SETTINGS** (*AJUSTES*), with [quick start](#quick-start-without-the-room-capture), how long to hold [Goku's gesture](effects.md#3--goku) (**−** and **+**, from 0.1 to 3 s), and the [keyboard shortcuts](#keyboard-shortcuts). The screenshot shows the panel before the tabs were added.
+The panel has three tabs in its black top bar: **LIVE** (*AO VIVO*), where the app opens, with everything below; **MEMES**, with the [meme reactions](memes.md); and **SETTINGS** (*AJUSTES*), with [quick start](#quick-start-without-the-room-capture) and the [keyboard shortcuts](#keyboard-shortcuts). The screenshot shows the panel before the tabs were added.
 
 ## What is on the panel
 
@@ -22,7 +22,7 @@ The panel has three tabs in its black top bar: **LIVE** (*AO VIVO*), where the a
 | Amber | Capturing the background (step out of the frame), or opening the camera |
 | Red | Vanishing, invisible, or reappearing |
 
-**A · Effect** (*Efeito*) — the active effect. Click it to open the list and pick another, or press `1`–`6`; the active one is marked **■ LIVE** (*ATIVO*). Switching keeps the camera, the virtual webcam, the call microphone, and the background as they are: no restart, no new calibration.
+**A · Effect** (*Efeito*) — the active effect. Click it to open the list and pick another, or press `1`–`6`; the active one is marked **■ LIVE** (*ATIVO*). Switching keeps the camera, the virtual webcam, the call microphone, and the background as they are: no restart, no new calibration. With **Goku** selected, a **Hold the gesture** (*Segurar o gesto*) row under it sets how long to hold two fingers on the forehead: **−** and **+** step from 0.1 to 3 seconds, and the time is saved.
 
 **B · Background** (*Fundo*) — choose what is behind you:
 
