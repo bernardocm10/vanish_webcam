@@ -28,7 +28,7 @@ You vanish in a cloud of smoke and a wooden log appears, falls, and stays in you
 
 ## 3 · Goku
 
-**Gesture:** hold your index and middle fingers straight and together against your forehead for 1 second. To make it quicker or slower, set **Goku: hold the gesture** (*Goku: segurar o gesto*) on the SETTINGS tab, from 0.1 to 3 seconds; it is saved with your preferences.
+**Gesture:** hold your index and middle fingers straight and together against your forehead for 1 second. To make it quicker or slower, use **−** and **+** on **Hold the gesture** (*Segurar o gesto*), right under the effect selector while Goku is selected, from 0.1 to 3 seconds; it is saved with your preferences.
 
 Comic-style vertical speed lines run across your silhouette just before you teleport away, and linger briefly afterward. **To come back**, lower your hand and repeat the gesture for the same time: the return plays the effect in reverse.
 

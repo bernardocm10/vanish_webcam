@@ -44,16 +44,28 @@ class HoldSettingTests(unittest.TestCase):
             data.settings_file.write_text('{"goku_hold": 99}', encoding="utf-8")
             self.assertEqual(data.load().goku_hold, HOLD_SECONDS)
 
-    def test_settings_tab_shows_the_time_and_steps_it(self):
-        image, regions = PanelRenderer().render(PanelView("goku", "", goku_hold=0.5), tab="settings")
+    def test_the_time_shows_under_the_effect_only_for_goku(self):
+        renderer = PanelRenderer()
+        image, regions = renderer.render(PanelView("goku", "", goku_hold=0.5))
         actions = [region.action for region in regions]
         self.assertIn(("goku_hold", 0.25), actions)
         self.assertIn(("goku_hold", 0.75), actions)
         self.assertIn("0.5", t("panel.goku_hold", seconds="0.5"))
+        # Right under the effect selector, above the backgrounds.
+        menu = next(r for r in regions if r.action == ("menu", "mode"))
+        step = next(r for r in regions if r.action == ("goku_hold", 0.75))
+        background = next(r for r in regions if r.action == ("add",))
+        self.assertLess(menu.box[3], step.box[1])
+        self.assertLess(step.box[3], background.box[1])
         # At the longest time there is no + to click.
-        _, regions = PanelRenderer().render(PanelView("goku", "", goku_hold=HOLD_CHOICES[-1]), tab="settings")
+        _, regions = renderer.render(PanelView("goku", "", goku_hold=HOLD_CHOICES[-1]))
         holds = [region.action for region in regions if region.action[0] == "goku_hold"]
         self.assertEqual(holds, [("goku_hold", 2.0)])
+        # Not with the other effects, nor on the other tabs; the panel keeps its height.
+        for view, tab in ((PanelView("normal", ""), "live"), (PanelView("goku", ""), "settings")):
+            other, regions = renderer.render(view, tab=tab)
+            self.assertFalse(any(region.action[0] == "goku_hold" for region in regions))
+            self.assertEqual(other.shape, image.shape)
 
 
 class GokuModeHoldTests(unittest.TestCase):
