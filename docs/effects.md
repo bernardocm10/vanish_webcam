@@ -2,7 +2,7 @@
 
 [← Documentation](README.md)
 
-Pick an effect in the panel, then make its gesture in front of the camera. You can also click **VANISH** to vanish and **REAPPEAR** to reappear without the gesture (except in Goku). With [keyboard shortcuts](control-panel.md#keyboard-shortcuts) on, their keys do the same.
+Pick an effect in the panel, then make its gesture in front of the camera. You can also click **VANISH** to vanish and **REAPPEAR** to reappear without the gesture (except in Goku; in Itachi, **REAPPEAR** plays the crows' return). With [keyboard shortcuts](control-panel.md#keyboard-shortcuts) on, their keys do the same.
 
 ## 1 · Normal
 
@@ -53,9 +53,22 @@ One raised hand, fists, or hands in front of your face do not count. After reapp
 
 You freeze into a statue of grey ash, the ash spreading from your head down while keeping the shapes of your face. Then the statue crumbles, also from the head down: the grains fall to the floor, a cloud of dust rises, and a pile of ash grows where you stood. The pile stays until you click **REAPPEAR**. The whole effect lasts about 3.8 seconds; like Particles, your silhouette is captured once when it starts.
 
+## 6 · Itachi
+
+**Gesture:** touch your hands together in front of your chest, below your chin and under your face, with both hands visible. Palms pressed together or fingertips touching both count; hands only close to each other do not.
+
+Your silhouette splits into about 80 pieces, one per crow. Ink cracks open around each piece just before it goes; then it tears off, turns dark, and shrinks into its crow as the crow takes flight. The shoulders and arms go first, then the head, and a neck and torso core last. The crows fly away in curves, a few big ones crossing in front of the camera, with feathers drifting. The room turns to translucent red ink, and the Sharingan eyes show at the top of the frame for a moment. The red room stays while you are invisible. The effect lasts about 4 seconds.
+
+**To come back**, part your hands, step back into the frame, and touch them at your chest again (or click **REAPPEAR**): the crows converge and rebuild you, and the room goes back to normal. Your silhouette is captured once at the start of each direction, where you stand at that moment.
+
+- When the hands overlap, the tracker may see only one: a few times a second the middle of the frame is searched again from scratch. `--gesture-debug` shows how many hands it sees.
+- Silent: no sound plays.
+- Uses `face_landmarker.task` to find your chin and `hand_landmarker.task` to track both hands.
+
 ## How the effects are drawn
 
-- **No anime frames or copyrighted assets** are included in the project.
+- **No anime frames** are included in the project.
 - The [wooden log](../assets/substitution_log.png) is an original illustration generated with ImageGen, using a supplied image as a visual reference.
 - The **smoke** is drawn in real time by `vanishcam/effects/naruto.py`, so it follows your position and scales with the video. A [CC0 smoke sprite sheet](https://opengameart.org/content/smoke-sprite-sheet) was considered, but the procedural animation adapts better to where you are in the frame.
+- Itachi's **crows** come from a five-pose sprite sheet and the **Sharingan** from a picture, both taken from the original VanishCam (see [assets](../assets/README.md)); the flight, the body breaking up and the red ink are drawn by `vanishcam/effects/itachi.py`.
 - Goku's **speed lines** are drawn in code by `vanishcam/effects/goku.py`. Gesture detection runs in a background thread, so the video never waits for the models.

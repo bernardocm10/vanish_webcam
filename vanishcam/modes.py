@@ -18,8 +18,8 @@ import numpy as np
 
 from . import detectors
 from .detectors import (
-    GokuPoseDetector, HandsUpPoseDetector, SalutePoseDetector, create_gesture_recognizer, create_hand_landmarker,
-    create_pose_detector,
+    GokuPoseDetector, HandsUpPoseDetector, SalutePoseDetector, create_chest_hands_detector, create_gesture_recognizer,
+    create_hand_landmarker, create_pose_detector,
 )
 
 from .effects.ash import (
@@ -28,6 +28,10 @@ from .effects.ash import (
 from .effects.goku import (
     EFFECT_SECONDS as GOKU_EFFECT_SECONDS, SOUND_NAME as GOKU_SOUND_NAME, HoldTracker, make_speed_lines,
     render_teleport, sound_path, teleport_region,
+)
+from .effects.itachi import (
+    EFFECT_SECONDS as ITACHI_EFFECT_SECONDS, HOLD_SECONDS as ITACHI_HOLD_SECONDS, BloodTint, CrowFlock, make_flock,
+    render_flock,
 )
 from .effects.naruto import (
     EFFECT_SECONDS as NARUTO_EFFECT_SECONDS, HOLD_SECONDS as NARUTO_HOLD_SECONDS,
@@ -57,7 +61,7 @@ class FrameInfo:
 
 
 class Mode:
-    """Phases: ready -> vanishing -> vanished (-> appearing -> ready, Goku only)."""
+    """Phases: ready -> vanishing -> vanished (-> appearing -> ready, Goku and Itachi only)."""
 
     name = ""
     # MediaPipe models the detector needs, besides the segmenter.
@@ -434,5 +438,94 @@ class GokuMode(Mode):
         return display
 
 
-# In panel order: also the 1-5 keys.
-MODES: dict[str, type[Mode]] = {mode.name: mode for mode in (NormalMode, NarutoMode, GokuMode, ParticlesMode, AshMode)}
+class ItachiMode(Mode):
+    """Hands together at the chest: the body leaves as crows over a red room; again to come back."""
+
+    name = "itachi"
+    models = (HAND_MODEL, FACE_MODEL)
+    create_recognizer = staticmethod(create_chest_hands_detector)
+
+    @staticmethod
+    def detect(recognizer, image: mp.Image, timestamp_ms: int):
+        return recognizer.recognize_pose(image, timestamp_ms)
+    detect_interval = 0.066
+    detect_while_vanished = True
+
+    def __init__(self, segment: Segment, sound=None):
+        super().__init__(segment, sound)
+        self.hold = HoldTracker(hold_seconds=ITACHI_HOLD_SECONDS, grace_seconds=0.3)
+        self.flock: CrowFlock | None = None
+        self.tint = BloodTint()
+        self.vanished_frame: np.ndarray | None = None
+
+    def detection_image(self, frame: np.ndarray) -> np.ndarray:
+        return half_resolution_rgb(frame)
+
+    def on_detection(self, posed, now: float) -> None:
+        # The hands must part before the gesture counts again.
+        if not self.hold.update(bool(posed), now):
+            return
+        if self.phase == "ready":
+            self.vanish(now)
+        elif self.phase == "vanished":
+            self.reappear()
+
+    def vanish(self, now: float) -> None:
+        super().vanish(now)
+        self.flock = None
+        self.vanished_frame = None
+
+    def reappear(self) -> None:
+        """While invisible, the crows rebuild the person (also with R); otherwise straight back."""
+        if self.phase != "vanished":
+            self.reset()
+            return
+        # The flock is captured from the person back in the frame, at the next frame.
+        self.phase = "appearing"
+        self.started = None
+        self.flock = None
+
+    def reset(self) -> None:
+        super().reappear()
+        self.hold = HoldTracker(hold_seconds=ITACHI_HOLD_SECONDS, grace_seconds=0.3)
+        self.flock = None
+        self.vanished_frame = None
+
+    def background_changed(self) -> None:
+        self.vanished_frame = None
+
+    def render(self, info: FrameInfo) -> np.ndarray:
+        if self.phase == "ready":
+            return info.frame
+        if self.phase == "vanished":
+            if self.vanished_frame is None:
+                self.vanished_frame = self.tint.blend(info.background, ITACHI_EFFECT_SECONDS)
+            return self.vanished_frame
+        appearing = self.phase == "appearing"
+        if self.flock is None:
+            # Silhouette captured once: the crows do not follow the person.
+            self.flock = make_flock(info.frame, self.segment(info.frame, info.timestamp_ms))
+            if self.flock is None:
+                print(f"[{self.title}] {t('itachi.no_person')}")
+                if appearing:
+                    self.phase = "vanished"
+                    return self.render(info)
+                self.reset()
+                return info.frame
+            if appearing:
+                self.started = info.now
+        age = info.now - self.started
+        display = render_flock(info.background, self.flock, self.tint, age, appearing)
+        if age >= ITACHI_EFFECT_SECONDS:
+            self.phase = "ready" if appearing else "vanished"
+            self.started = None
+            self.flock = None
+            self.vanished_frame = None if appearing else display
+            return info.frame if appearing else display
+        return display
+
+
+# In panel order: also the 1-6 keys.
+MODES: dict[str, type[Mode]] = {
+    mode.name: mode for mode in (NormalMode, NarutoMode, GokuMode, ParticlesMode, AshMode, ItachiMode)
+}

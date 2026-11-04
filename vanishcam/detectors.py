@@ -5,6 +5,7 @@ from __future__ import annotations
 import threading
 from dataclasses import replace
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Callable
 
 import mediapipe as mp
@@ -14,6 +15,7 @@ from mediapipe.tasks.python import vision
 
 from .effects.ash import hands_up_pose, hands_up_reference
 from .effects.goku import face_reference, forehead_fingers_pose
+from .effects.itachi import chest_hands_pose
 from .effects.naruto import hand_seal_from_landmarks
 from .effects.particles import salute_pose, salute_reference
 from .hand_geometry import face_box
@@ -56,6 +58,23 @@ def create_pose_detector(detector: type[GokuPoseDetector]) -> GokuPoseDetector:
         face.close()
         raise
     return detector(face, hands)
+
+
+def create_chest_hands_detector() -> ChestHandsPoseDetector:
+    """Face and hands like the other poses, plus an IMAGE hand model for the retry on the chest."""
+    detector = create_pose_detector(ChestHandsPoseDetector)
+    try:
+        detector.fallback = vision.HandLandmarker.create_from_options(vision.HandLandmarkerOptions(
+            base_options=python.BaseOptions(model_asset_path=str(HAND_MODEL)),
+            running_mode=vision.RunningMode.IMAGE,
+            num_hands=2,
+            min_hand_detection_confidence=0.35,
+            min_hand_presence_confidence=0.35,
+        ))
+    except Exception:
+        detector.close()
+        raise
+    return detector
 
 
 def create_meme_detector() -> MemePoseDetector:
@@ -390,6 +409,51 @@ class SalutePoseDetector(GokuPoseDetector):
 
     reference = staticmethod(salute_reference)
     pose = staticmethod(salute_pose)
+
+
+class ChestHandsPoseDetector(GokuPoseDetector):
+    """Itachi: both hands touching in front of the chest, under the face.
+
+    Overlapping hands often come out as one in the video tracking: then, a few times
+    a second, the center of the frame is searched again from scratch.
+    """
+
+    reference = staticmethod(hands_up_reference)
+    RETRY_MS = 170
+    # The center of the frame, where the chest is: bigger hands for the model.
+    CROP = (0.18, 0.16, 0.82, 0.92)  # x1, y1, x2, y2
+
+    def __init__(self, face, hands, fallback=None):
+        super().__init__(face, hands)
+        self.fallback = fallback
+        self.next_retry_ms = 0
+
+    def recognize_pose(self, image: mp.Image, timestamp_ms: int) -> bool:
+        if super().recognize_pose(image, timestamp_ms):
+            return True
+        if self.fallback is None or self.last_face is None or timestamp_ms < self.next_retry_ms:
+            return False
+        self.next_retry_ms = timestamp_ms + self.RETRY_MS
+        rgb = image.numpy_view()
+        x1, y1 = round(image.width * self.CROP[0]), round(image.height * self.CROP[1])
+        x2, y2 = round(image.width * self.CROP[2]), round(image.height * self.CROP[3])
+        crop = mp.Image(image_format=mp.ImageFormat.SRGB, data=np.ascontiguousarray(rgb[y1:y2, x1:x2]))
+        found = self.fallback.detect(crop).hand_landmarks
+        self.last_hand_count = max(self.last_hand_count, len(found))
+        # Back to the whole frame's coordinates, where the face is.
+        hands = [[SimpleNamespace(x=(x1 + p.x * crop.width) / image.width, y=(y1 + p.y * crop.height) / image.height)
+                  for p in hand] for hand in found]
+        return self.matches(hands, self.last_face, image.width, image.height)
+
+    def matches(self, hands, face, width: int, height: int) -> bool:
+        return chest_hands_pose(hands, face, width, height)
+
+    def close(self) -> None:
+        try:
+            super().close()
+        finally:
+            if self.fallback is not None:
+                self.fallback.close()
 
 
 class MemePoseDetector:

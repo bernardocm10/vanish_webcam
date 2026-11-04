@@ -26,6 +26,7 @@ from .camera import (
 from .cli import parse_args
 from .control_panel import ACCENTS, AMBER, FONT_DIR, FONTS, GREEN, MODE_CARDS, ControlPanel, PanelView, action_name
 from .detectors import AsyncRecognizer, create_meme_detector, detector_status
+from .effects.itachi import CROW_SHEET_PATH, SHARINGAN_PATH, load_crow_sprites, load_sharingan
 from .effects.naruto import load_log
 from .i18n import t
 from .models import SEGMENTER_MODEL, download_models
@@ -74,11 +75,13 @@ def self_test() -> int:
     fonts = tuple(FONT_DIR / names[0] for names in FONTS.values())
     models = dict.fromkeys(model for mode in MODES.values() for model in mode.models)
     sounds = dict.fromkeys(path for mode in MODES.values() if (path := mode.sound_file()) is not None)
-    required = (SEGMENTER_MODEL, *models, *sounds, *fonts)
+    required = (SEGMENTER_MODEL, *models, *sounds, *fonts, CROW_SHEET_PATH, SHARINGAN_PATH)
     missing = [path.name for path in required if not path.is_file()]
     if missing:
         raise RuntimeError(t("selftest.missing", files=", ".join(missing)))
     load_log()
+    load_crow_sprites()
+    load_sharingan()
     import pygame.mixer  # The distributed build must contain its MP3 decoder.
     import cv2_enumerate_cameras  # And the native helper that names the webcams in the panel.
     if sys.platform == "win32":
