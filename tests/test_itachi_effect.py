@@ -124,11 +124,57 @@ class CrowFlockTests(unittest.TestCase):
             self.assertGreater(self.mask[int(crow.origin[1]), int(crow.origin[0])], 0.5)
         self.assertEqual(sum(crow.hero for crow in self.flock.crows), 4)
 
-    def test_head_goes_before_the_torso_core(self):
+    def test_shoulders_then_head_then_the_torso_core(self):
         top = int(np.nonzero(self.mask.any(axis=1))[0][0])
-        self.assertLessEqual(float(self.flock.release[top + 10, 160]), 1.71)
-        self.assertGreaterEqual(float(self.flock.release[120, 160]), 1.86)
-        self.assertLess(float(self.flock.release[self.mask > 0.5].max()), BODY_RELEASE_SECONDS)
+        release = self.flock.release
+        head = float(np.median(release[top:top + 30, 140:180]))
+        core = float(np.median(release[110:150, 150:170]))
+        shoulders = float(np.median(release[150:200, 100:120][self.mask[150:200, 100:120] > 0.5]))
+        self.assertLess(shoulders, head)
+        self.assertLess(head, core)
+        self.assertLess(float(release[self.mask > 0.01].max()), BODY_RELEASE_SECONDS)
+
+    def test_one_piece_of_body_per_crow(self):
+        self.assertEqual(len(self.flock.shards), CROW_COUNT)
+        at_home = 0
+        for shard, crow in zip(self.flock.shards, self.flock.crows):
+            height, width = shard.alpha.shape
+            # The crow leaves from its own piece (the torn borders move a few off it),
+            # and the piece holds the source pixels.
+            at_home += (shard.left <= crow.origin[0] < shard.left + width
+                        and shard.top <= crow.origin[1] < shard.top + height)
+            inside = shard.alpha > 0.5
+            np.testing.assert_array_equal(
+                shard.color[inside], self.person[shard.top:shard.top + height, shard.left:shard.left + width][inside])
+        self.assertGreater(at_home, CROW_COUNT * 0.9)
+        # Together the pieces cover the whole body, once.
+        covered = np.zeros(self.mask.shape, np.int32)
+        for shard in self.flock.shards:
+            height, width = shard.alpha.shape
+            covered[shard.top:shard.top + height, shard.left:shard.left + width] += shard.alpha > 0
+        self.assertTrue((covered[self.mask > 0.5] == 1).all())
+
+    def test_a_torn_piece_is_dark_as_it_flies_into_its_crow(self):
+        index = min(range(CROW_COUNT), key=lambda i: self.flock.crows[i].launch)
+        crow = self.flock.crows[index]
+        frame = self.background.copy()
+        itachi.draw_shard(frame, self.flock.shards[index], crow, crow.launch + itachi.TEAR_SECONDS * 0.4)
+        changed = np.any(frame != self.background, axis=2)
+        self.assertTrue(changed.any())
+        # Darker than the person was: ink, on its way to being a crow.
+        self.assertLess(int(frame[changed].mean()), int(self.person[self.mask > 0.5].mean()))
+        # Gone once the crow has taken over.
+        later = self.background.copy()
+        itachi.draw_shard(later, self.flock.shards[index], crow, crow.launch + itachi.TEAR_SECONDS)
+        np.testing.assert_array_equal(later, self.background)
+
+    def test_cracks_show_before_a_piece_tears_off(self):
+        crow = max(self.flock.crows, key=lambda c: c.launch)
+        before = render_flock(self.background, self.flock, self.tint, crow.launch - itachi.CRACK_SECONDS - 0.05)
+        cracking = render_flock(self.background, self.flock, self.tint, crow.launch - 0.05)
+        x, y = int(crow.origin[0]), int(crow.origin[1])
+        # The body around the last crow's start goes darker just before it leaves.
+        self.assertLess(int(cracking[y - 3:y + 4, x - 3:x + 4].mean()), int(before[y - 3:y + 4, x - 3:x + 4].mean()))
 
     def test_starts_on_the_person_and_ends_on_the_red_room(self):
         start = render_flock(self.background, self.flock, self.tint, 0.0)
