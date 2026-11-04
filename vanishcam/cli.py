@@ -49,6 +49,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--mode", choices=tuple(MODES), help=t("cli.mode"))
     parser.add_argument("--call-audio", action="store_true", help=t("cli.call_audio"))
     parser.add_argument("--static-background", action="store_true", help=t("cli.static_background"))
+    parser.add_argument("--quick-start", action="store_true", help=t("cli.quick_start"))
     parser.add_argument(
         "--background-image", type=Path, metavar=t("cli.background_metavar"),
         help=t("cli.background_image"),
