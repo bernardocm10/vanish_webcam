@@ -608,9 +608,8 @@ class PanelRenderer:
             usable = memes.enabled and gesture.image is not None
             text((PAD + MEME_THUMB[0] + 12, y + 15), t(f"meme.{name}").upper(), 11, INK if usable else GREY,
                  "mono-bold", "lm", spacing=0.6)
-            effect = CONFLICTS.get(name)
-            if effect == view.mode:
-                note, color = t("panel.meme_conflict", effect=t(f"mode.{effect}.title")), AMBER
+            if view.mode in CONFLICTS.get(name, ()):
+                note, color = t("panel.meme_conflict", effect=t(f"mode.{view.mode}.title")), AMBER
             else:
                 note, color = t("panel.change_image" if gesture.image is not None else "panel.choose_image"), GREY
             room = WIDTH - 2 * PAD - MEME_THUMB[0] - 70
