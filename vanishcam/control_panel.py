@@ -22,6 +22,7 @@ import cv2
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont, ImageOps
 
+from .effects.goku import HOLD_SECONDS as GOKU_HOLD_SECONDS, step_hold
 from .i18n import t
 from .meme_poses import GESTURES
 from .memes import CONFLICTS, Memes
@@ -122,6 +123,7 @@ class PanelView:
     memes: Memes = Memes()
     calibrating: bool = False  # Capturing the room: NEW BACKGROUND becomes SKIP.
     quick_start: bool = False  # Start without capturing the room (SETTINGS tab).
+    goku_hold: float = GOKU_HOLD_SECONDS  # How long Goku's gesture is held (SETTINGS tab).
 
     @property
     def camera_name(self) -> str:
@@ -216,6 +218,8 @@ class Layout:
 
 # On the SETTINGS tab: a switch, the line under it, and the room before the next section.
 SWITCH_BLOCK = CAMERA_HEIGHT + 14 + 16
+# Goku's hold time, under the effect selector while Goku is the effect.
+GOKU_ROW = CAMERA_HEIGHT + 8
 
 
 def settings_bottom(top: float) -> float:
@@ -226,12 +230,15 @@ def settings_bottom(top: float) -> float:
 
 def layout(view: PanelView) -> Layout:
     effect = HEADER + SECTION
-    gallery = effect + SELECT_HEIGHT + SECTION
+    # Goku's hold time sits under the selector and pushes the rest down.
+    extra = GOKU_ROW if view.mode == "goku" else 0
+    gallery = effect + SELECT_HEIGHT + extra + SECTION
     camera = gallery + gallery_height(view) + SECTION
     # Selector, the status line under it, then reopen and settings.
     controls = camera + CAMERA_HEIGHT + 24 + KEY_HEIGHT + SECTION
-    # Every tab shares the panel's height: the footer goes below the longest one.
-    footer = max(controls + 2 * KEY_HEIGHT + TILE_GAP + 16, settings_bottom(effect) + 16)
+    # Every tab and effect shares the panel's height: the footer goes below the longest one,
+    # so switching effect does not resize the panel.
+    footer = max(controls - extra + GOKU_ROW + 2 * KEY_HEIGHT + TILE_GAP + 16, settings_bottom(effect) + 16)
     return Layout(effect, gallery, camera, controls, footer, round(footer + FOOTER))
 
 
@@ -450,6 +457,22 @@ class PanelRenderer:
         number, card = next((n, c) for n, c in enumerate(MODE_CARDS, start=1) if c.key == view.mode)
         selector(effect_box, "mode")
         mode_row(y, number, card, False, SELECT_HEIGHT, False)
+        if view.mode == "goku":
+            # How long to hold the gesture: shorter or longer, a step at a time.
+            y += SELECT_HEIGHT + 8
+            rect((PAD, y, WIDTH - PAD, y + CAMERA_HEIGHT), fill=KEY, outline=KEY_EDGE)
+            seconds = f"{view.goku_hold:g}"
+            text((PAD + 12, y + CAMERA_HEIGHT / 2), t("panel.goku_hold", seconds=seconds), 14, INK, "title", "lm")
+            for index, (label, direction) in enumerate((("−", -1), ("+", 1))):
+                target = step_hold(view.goku_hold, direction)
+                button = (WIDTH - PAD - 89 + index * 44, y + 5, WIDTH - PAD - 49 + index * 44, y + CAMERA_HEIGHT - 5)
+                enabled = target is not None
+                over = enabled and hovered(button)
+                rect(button, fill=HOVER if over else FACE, outline=INK if over else (KEY_EDGE if enabled else RULE))
+                text(((button[0] + button[2]) / 2, (button[1] + button[3]) / 2), label, 16, INK if enabled else PALE,
+                     "mono-bold", "mm")
+                if enabled:
+                    clickable(button, ("goku_hold", target))
 
         # B · Background.
         y = spots.gallery

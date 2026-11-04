@@ -22,7 +22,7 @@ The panel has three tabs in its black top bar: **LIVE** (*AO VIVO*), where the a
 | Amber | Capturing the background (step out of the frame), or opening the camera |
 | Red | Vanishing, invisible, or reappearing |
 
-**A · Effect** (*Efeito*) — the active effect. Click it to open the list and pick another, or press `1`–`6`; the active one is marked **■ LIVE** (*ATIVO*). Switching keeps the camera, the virtual webcam, the call microphone, and the background as they are: no restart, no new calibration.
+**A · Effect** (*Efeito*) — the active effect. Click it to open the list and pick another, or press `1`–`6`; the active one is marked **■ LIVE** (*ATIVO*). Switching keeps the camera, the virtual webcam, the call microphone, and the background as they are: no restart, no new calibration. With **Goku** selected, a **Hold the gesture** (*Segurar o gesto*) row under it sets how long to hold two fingers on the forehead: **−** and **+** step from 0.1 to 3 seconds, and the time is saved.
 
 **B · Background** (*Fundo*) — choose what is behind you:
 

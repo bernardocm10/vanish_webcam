@@ -28,6 +28,7 @@ from .camera import (
 from .cli import parse_args
 from .control_panel import ACCENTS, AMBER, FONT_DIR, FONTS, GREEN, MODE_CARDS, ControlPanel, PanelView, action_name
 from .detectors import AsyncRecognizer, create_meme_detector, detector_status
+from .effects.goku import valid_hold
 from .effects.itachi import CROW_SHEET_PATH, SHARINGAN_PATH, load_crow_sprites, load_sharingan
 from .effects.naruto import load_log
 from .i18n import t
@@ -221,10 +222,14 @@ def run_camera(args: argparse.Namespace, resources: ExitStack, mode_name: str | 
     shortcuts = saved.shortcuts
     memes = saved.memes
     quick_start = saved.quick_start
+    goku_hold = saved.goku_hold
+
+    def current_settings(mode: str | None = None) -> Settings:
+        return Settings(mode or effect.name, chosen, camera_name(), detached, shortcuts, memes, quick_start, goku_hold)
 
     def save_settings(mode: str | None = None) -> None:
         """Every preference at once: saving one must not drop the others."""
-        user_data.save(Settings(mode or effect.name, chosen, camera_name(), detached, shortcuts, memes, quick_start))
+        user_data.save(current_settings(mode))
 
     chosen: Path | None = None
     background_source: np.ndarray | None = None  # Chosen picture, at its original resolution.
@@ -256,6 +261,7 @@ def run_camera(args: argparse.Namespace, resources: ExitStack, mode_name: str | 
     segment = PersonSegmenter(segmenter)
     mic = open_call_mic(args, resources)
     effect = EffectRuntime(mode_name, segment, mic)
+    effect.mode.configure(saved)
     # Closes whichever effect is active at that point, also after a mode switch.
     resources.callback(lambda: effect.close())
     resources.callback(cv2.destroyAllWindows)
@@ -373,8 +379,10 @@ def run_camera(args: argparse.Namespace, resources: ExitStack, mode_name: str | 
             effect = EffectRuntime(name, segment, mic)
         except Exception as error:
             effect = EffectRuntime(previous, segment, mic)
+            effect.mode.configure(current_settings())
             notify(t("loop.mode_failed", name=name, error=error), time.perf_counter())
             return
+        effect.mode.configure(current_settings())
         save_settings()
         print(f"[{effect.mode.title}] {effect.mode.instructions}")
 
@@ -437,7 +445,7 @@ def run_camera(args: argparse.Namespace, resources: ExitStack, mode_name: str | 
         save_settings()
 
     def handle(action: tuple, now: float) -> None:
-        nonlocal gallery, cameras, shortcuts, memes, quick_start, skip_capture
+        nonlocal gallery, cameras, shortcuts, memes, quick_start, skip_capture, goku_hold
         kind = action[0]
         running = state.phase == "running"
         if kind == "mode":
@@ -466,6 +474,10 @@ def run_camera(args: argparse.Namespace, resources: ExitStack, mode_name: str | 
             skip_capture = True
         elif kind == "quick_start":
             quick_start = bool(action[1])
+            save_settings()
+        elif kind == "goku_hold" and valid_hold(action[1]) is not None:
+            goku_hold = valid_hold(action[1])
+            effect.mode.configure(current_settings())
             save_settings()
         elif kind == "reappear" and running and effect.mode.manual_keys:
             effect.mode.reappear()
@@ -682,6 +694,7 @@ def run_camera(args: argparse.Namespace, resources: ExitStack, mode_name: str | 
                 camera_state=camera_state(camera),
                 can_adjust=platform.system() == "Windows", detached=detached, shortcuts=shortcuts, memes=memes,
                 calibrating=state.phase == "calibrating" and background_source is None, quick_start=quick_start,
+                goku_hold=goku_hold,
             ), display)
 
             # The full code: masking it to 8 bits would turn other keys into letters (End into W).
