@@ -2,7 +2,7 @@
 
 [![Tests](https://github.com/bernardocm10/vanish_webcam/actions/workflows/tests.yml/badge.svg)](https://github.com/bernardocm10/vanish_webcam/actions/workflows/tests.yml)
 
-Vanish from your webcam with a hand gesture, live in Teams, OBS, or any video call. Dissolve into thin air, swap yourself for a log in a cloud of smoke, teleport like Goku, scatter into fragments in the wind, or turn to ash and crumble — in front of your real room or any picture you choose.
+Vanish from your webcam with a hand gesture, live in Teams, OBS, or any video call. Dissolve into thin air, swap yourself for a log in a cloud of smoke, teleport like Goku, scatter into fragments in the wind, turn to ash and crumble, or break into a flock of crows like Itachi — in front of your real room or any picture you choose.
 
 <p align="center"><img src="docs/window.png" alt="The VanishCam window: the control panel on the left and the live video beside it, right after vanishing in front of a sunset picture" width="820"></p>
 
@@ -10,7 +10,7 @@ Everything runs on your computer: the video is never recorded or sent anywhere, 
 
 ## Features
 
-- **Five effects**, each triggered by a hand gesture.
+- **Six effects**, each triggered by a hand gesture.
 - **Meme reactions:** pick a picture for each of eight gestures (thumbs up, calm down, hands behind the head…) and it pops up over the video in the call for a few seconds, on top of any effect.
 - **One window:** the control panel beside the live video, to switch effect and background while the camera keeps running. Detach the video to its own window for a second monitor or OBS.
 - **No accidental keys:** keyboard shortcuts are off until you turn them on in **SETTINGS**, where you also pick each key, so typing in the wrong window never triggers an effect.
@@ -49,6 +49,7 @@ Using it in a call? See [Calls, Teams and OBS](docs/calls.md).
 | **Goku** | Two fingers on your forehead for 1 s | Speed lines and you teleport; repeat to come back |
 | **Particles** | Salute: flat hand on your brow, held for a moment | You break into fragments carried by the wind |
 | **Ash** | Both open hands raised beside your head, held for a moment | You turn to grey ash, crumble from the head down, and a pile of ash stays on the floor |
+| **Itachi** | Hands touching in front of your chest; again to come back | You break into a flock of crows, the room turns to red ink, and the Sharingan shows for a moment |
 
 Details for each one in [Effects](docs/effects.md).
 
@@ -65,4 +66,4 @@ Details for each one in [Effects](docs/effects.md).
 
 ## Credits
 
-VanishCam is a fork of [Nicovic17/vanish_webcam](https://github.com/Nicovic17/vanish_webcam) by [Nicola Auriemma](https://github.com/Nicovic17), who developed the first two effects, **Normal** (dissolve) and **Naruto** (log and smoke), and the original app this repository is built on: the webcam pipeline, person segmentation, and gesture recognition with MediaPipe.
+VanishCam is a fork of [Nicovic17/vanish_webcam](https://github.com/Nicovic17/vanish_webcam) by [Nicola Auriemma](https://github.com/Nicovic17), who developed the first two effects, **Normal** (dissolve) and **Naruto** (log and smoke), and the original app this repository is built on: the webcam pipeline, person segmentation, and gesture recognition with MediaPipe. The **Itachi** effect is adapted from his version, with its crow and Sharingan pictures.

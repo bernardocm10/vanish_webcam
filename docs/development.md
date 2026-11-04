@@ -38,8 +38,8 @@ docs/               these guides
 | `vanishcam/segmentation.py` | The person mask, once per frame |
 | `vanishcam/background.py` | Picture backgrounds and keeping the real room up to date |
 | `vanishcam/detectors.py` | The recognizers (gesture, hands, face and hands) and `AsyncRecognizer` |
-| `vanishcam/modes.py` | One class per effect, declaring its models, recognizer and sound: `NormalMode`, `NarutoMode`, `GokuMode`, `ParticlesMode`, `AshMode`; `MODES` sets the panel order |
-| `vanishcam/effects/` | `normal.py`, `naruto.py`, `goku.py`, `particles.py`, `ash.py`: drawing for each effect |
+| `vanishcam/modes.py` | One class per effect, declaring its models, recognizer and sound: `NormalMode`, `NarutoMode`, `GokuMode`, `ParticlesMode`, `AshMode`, `ItachiMode`; `MODES` sets the panel order |
+| `vanishcam/effects/` | `normal.py`, `naruto.py`, `goku.py`, `particles.py`, `ash.py`, `itachi.py`: drawing for each effect |
 | `vanishcam/hand_geometry.py` | Finger and face measures shared by the effects' poses and the memes |
 | `vanishcam/meme_poses.py` | The eight meme gestures and their precedence |
 | `vanishcam/memes.py` | The meme settings (`Memes`) and the picture on screen (`MemeLayer`) |
@@ -56,12 +56,12 @@ A few things worth knowing:
 - **The webcam is read in a background thread** (`FrameReader`), so a slow or stuck webcam never freezes the window: while no new image comes, the loop keeps answering clicks and keys without redoing any video work.
 - **The window image is reused** (`ControlPanel.show`): the panel is copied in only when it changes and the video only when a new frame comes.
 - **Switching effect replaces only `EffectRuntime`:** the recognizer, the sound, and the `Mode`. The camera, segmentation, virtual devices, and background stay open.
-- **Each `Mode` is a small state machine:** it turns detection results into phases (`ready`, `vanishing`, `vanished`, and `appearing` for Goku) and draws each frame.
+- **Each `Mode` is a small state machine:** it turns detection results into phases (`ready`, `vanishing`, `vanished`, and `appearing` for Goku and Itachi) and draws each frame.
 
 ## Adding an effect
 
 1. Put its drawing and pose in `vanishcam/effects/<name>.py`.
-2. Subclass `Mode` in `vanishcam/modes.py` and declare what it needs: `models`, `create_recognizer` and `detect`, and optionally `sound_file` and `sound_optional`. Register it in `MODES` at the position it should have in the panel: that order also sets its `1`–`5` key.
+2. Subclass `Mode` in `vanishcam/modes.py` and declare what it needs: `models`, `create_recognizer` and `detect`, and optionally `sound_file` and `sound_optional`. Register it in `MODES` at the position it should have in the panel: that order also sets its `1`–`9` key.
 3. Add its `mode.<name>.title`, `.hint` and `.instructions` texts to both languages in `vanishcam/i18n.py`.
 
 The panel, the model downloads, the sound, and the self-test read everything else from `MODES`.
