@@ -39,7 +39,7 @@ When two gestures match at once, the one higher in the table wins.
 
 Two gestures are close to an effect's own trigger:
 
-- **Hands together** is the Naruto seal.
+- **Hands together** is the Naruto seal, and the Itachi gesture when they are at your chest.
 - **Hands behind the head** is close to the Ash gesture: both hands raised beside your head.
 
 With that effect selected, the gesture's row on the MEMES tab shows a warning, because one pose could make you vanish and show the meme at the same time. The app does not switch anything off for you: turn the meme off if you do not want both.

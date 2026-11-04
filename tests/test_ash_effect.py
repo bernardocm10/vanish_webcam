@@ -139,7 +139,7 @@ class HandsUpPoseTests(unittest.TestCase):
 class AshModeTests(unittest.TestCase):
     def test_registered_with_a_panel_row_and_a_pose_detector(self):
         self.assertIs(MODES["ash"], AshMode)
-        self.assertEqual(MODE_CARDS[-1].key, "ash")
+        self.assertEqual(MODE_CARDS[4].key, "ash")
         self.assertEqual(Shortcuts().with_enabled(True).action_for(ord("5")), ("mode", "ash"))
         recognizer, image = Mock(), object()
         self.assertIs(AshMode.detect(recognizer, image, 0), recognizer.recognize_pose.return_value)

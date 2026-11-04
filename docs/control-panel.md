@@ -4,7 +4,7 @@
 
 <img src="panel.png" alt="VanishCam control panel" width="300" align="right">
 
-VanishCam opens a single window: the panel on the left and the live video filling the rest. Resize or maximize it and the video grows with it, never stretched. Everything you click lives in the panel, so the video you send to a call shows only you and the effect.
+VanishCam opens a single window: the panel on the left and the live video filling the rest. Resize or maximize it and the video grows with it, never stretched. On a small screen the window starts within it, and when the window is shorter than the panel, the panel scrolls: with the mouse wheel over it, or by dragging the thin bar on its right edge. The black top bar with the tabs stays in place. Everything you click lives in the panel, so the video you send to a call shows only you and the effect.
 
 The panel is styled like a broadcast control surface: a light faceplate, black ink, and a single red signal color for whatever is live.
 
@@ -22,7 +22,7 @@ The panel has three tabs in its black top bar: **LIVE** (*AO VIVO*), where the a
 | Amber | Capturing the background (step out of the frame), or opening the camera |
 | Red | Vanishing, invisible, or reappearing |
 
-**A · Effect** (*Efeito*) — the active effect. Click it to open the list and pick another, or press `1`–`5`; the active one is marked **■ LIVE** (*ATIVO*). Switching keeps the camera, the virtual webcam, the call microphone, and the background as they are: no restart, no new calibration.
+**A · Effect** (*Efeito*) — the active effect. Click it to open the list and pick another, or press `1`–`6`; the active one is marked **■ LIVE** (*ATIVO*). Switching keeps the camera, the virtual webcam, the call microphone, and the background as they are: no restart, no new calibration.
 
 **B · Background** (*Fundo*) — choose what is behind you:
 
@@ -74,7 +74,7 @@ To use them, open **SETTINGS** (*AJUSTES*) and click **Shortcuts off** (*Atalhos
 | Capture a new real background | `SPACE` |
 | Fullscreen with only the video (in its own window when detached) | `F` |
 | Detach the video to its own window, or attach it back | `D` |
-| Switch effect (Normal, Naruto, Goku, Particles, Ash) | `1`–`5` |
+| Switch effect (Normal, Naruto, Goku, Particles, Ash, Itachi) | `1`–`6` |
 | Quit | none |
 
 - **To change a key**, click its row and press the new key: a letter, a digit, punctuation, or space. Combinations with Ctrl or Alt and the function keys are not supported, because the window cannot tell them apart reliably on every system. `ESC` cancels. A key already used by another action is refused, and the panel says which one has it.
