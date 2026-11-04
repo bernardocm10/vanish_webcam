@@ -12,13 +12,3 @@ For smoke, the app uses its own procedurally animated shapes in
 `vanishcam/effects/naruto.py`. A [CC0 smoke sprite sheet](https://opengameart.org/content/smoke-sprite-sheet)
 was reviewed but is not included because the procedural smoke scales and follows
 the detected person dynamically.
-
-# Itachi crows and Sharingan
-
-`itachi_crow_sheet.png` (five flapping poses of a cel-shaded crow on a transparent
-background) and `sharingan.png` (the two eyes on black) come from the original
-VanishCam, [Nicovic17/vanish_webcam](https://github.com/Nicovic17/vanish_webcam),
-where they were added with its Itachi effect without a note on their origin. They
-are here to try the effect as it looks there; `vanishcam/effects/itachi.py` loads
-them with `load_crow_sprites` and `load_sharingan`, so pictures drawn in code can
-replace them later without touching the rest of the effect.

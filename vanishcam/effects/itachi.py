@@ -5,8 +5,8 @@ cracking through it, tears off, and shrinks into its crow as it takes flight; th
 turns to red ink and the Sharingan shows for a moment at the top. Played backwards, the
 crows converge and rebuild the person.
 
-The crow sheet and the Sharingan picture come from the original VanishCam
-(Nicovic17/vanish_webcam), like the effect's drawing ideas.
+The effect's drawing ideas come from the original VanishCam (Nicovic17/vanish_webcam);
+the crows and the Sharingan are drawn in code by itachi_art.
 """
 
 from __future__ import annotations
@@ -18,8 +18,7 @@ from functools import lru_cache
 import cv2
 import numpy as np
 
-from ..i18n import t
-from ..paths import ASSETS_DIR
+from .itachi_art import SPRITE_HEIGHT, SPRITE_WIDTH, crow_sprites, sharingan as sharingan_art
 
 EFFECT_SECONDS = 4.0
 # By then the whole body has left as crows; the last ones are still flying away.
@@ -36,10 +35,8 @@ CRUMBLE_SECONDS = 0.12
 # ...and takes this long to fly off and shrink into its crow.
 TEAR_SECONDS = 0.45
 
-CROW_SHEET_PATH = ASSETS_DIR / "itachi_crow_sheet.png"
-SHARINGAN_PATH = ASSETS_DIR / "sharingan.png"
-# Every flapping pose of the sheet is centered on a canvas of this size.
-SPRITE_WIDTH, SPRITE_HEIGHT = 176, 128
+# A crow tilts toward where it flies, up to this much (degrees): never straight up or down.
+MAX_TILT = 40
 # The sizes below were tuned for 960x540 and scale with the frame.
 REFERENCE_SIZE = (960, 540)
 
@@ -89,59 +86,6 @@ def chest_hands_pose(hands, face, width: int, height: int) -> bool:
     first, second = points[0][CONTACT_POINTS], points[1][CONTACT_POINTS]
     contact = float(np.min(np.linalg.norm(first[:, None] - second[None, :], axis=2)))
     return contact <= size * 0.48
-
-
-@lru_cache(maxsize=1)
-def load_crow_sprites() -> tuple[np.ndarray, ...]:
-    """The five flapping poses of the sheet, left to right, each centered on a BGRA canvas."""
-    sheet = cv2.imread(str(CROW_SHEET_PATH), cv2.IMREAD_UNCHANGED)
-    if sheet is None or sheet.ndim != 3 or sheet.shape[2] != 4:
-        raise RuntimeError(t("itachi.unreadable", path=CROW_SHEET_PATH))
-    count, labels, stats, _ = cv2.connectedComponentsWithStats((sheet[:, :, 3] > 30).astype(np.uint8), 8)
-    birds = sorted((index for index in range(1, count) if stats[index, cv2.CC_STAT_AREA] > 5000),
-                   key=lambda index: stats[index, cv2.CC_STAT_LEFT])
-    if len(birds) != 5:
-        raise RuntimeError(t("itachi.unreadable", path=CROW_SHEET_PATH))
-    sprites = []
-    for index in birds:
-        x, y, width, height = (int(value) for value in stats[index, :4])
-        left, top = max(0, x - 10), max(0, y - 10)
-        right, bottom = min(sheet.shape[1], x + width + 10), min(sheet.shape[0], y + height + 10)
-        crop = sheet[top:bottom, left:right].copy()
-        # Only this bird: the wing tips of its neighbours stay out.
-        crop[labels[top:bottom, left:right] != index] = 0
-        factor = min((SPRITE_WIDTH - 8) / crop.shape[1], (SPRITE_HEIGHT - 8) / crop.shape[0])
-        scaled = cv2.resize(crop, (max(1, round(crop.shape[1] * factor)), max(1, round(crop.shape[0] * factor))),
-                            interpolation=cv2.INTER_AREA)
-        canvas = np.zeros((SPRITE_HEIGHT, SPRITE_WIDTH, 4), np.uint8)
-        px, py = (SPRITE_WIDTH - scaled.shape[1]) // 2, (SPRITE_HEIGHT - scaled.shape[0]) // 2
-        canvas[py:py + scaled.shape[0], px:px + scaled.shape[1]] = scaled
-        sprites.append(canvas)
-    return tuple(sprites)
-
-
-@lru_cache(maxsize=1)
-def load_sharingan() -> np.ndarray:
-    """The two eyes as BGRA: the black backdrop turns transparent, the dark pupils stay."""
-    image = cv2.imread(str(SHARINGAN_PATH), cv2.IMREAD_COLOR)
-    if image is None or image.shape[0] < 700 or image.shape[1] < 1000:
-        raise RuntimeError(t("itachi.unreadable", path=SHARINGAN_PATH))
-    # The eyes' band of the picture, without the empty black above and below.
-    crop = image[round(image.shape[0] * 0.16):round(image.shape[0] * 0.78)].copy()
-    height, width = crop.shape[:2]
-    # A soft glow behind each eye keeps the black pupils from turning transparent.
-    glow = np.zeros((height, width), np.uint8)
-    for cx in (int(width * 0.19), int(width * 0.81)):
-        cv2.ellipse(glow, (cx, round(height * 0.27)), (int(width * 0.21), round(height * 0.21)),
-                    0, 0, 360, 220, -1, cv2.LINE_AA)
-    glow = cv2.GaussianBlur(glow, (0, 0), 26)
-    brightness = crop.max(axis=2).astype(np.float32)
-    alpha = np.maximum(glow.astype(np.float32), np.clip((brightness - 13) * 1.3, 0, 255))
-    # Fade the borders: no visible rectangle around the picture.
-    horizontal = np.minimum(np.arange(width), width - 1 - np.arange(width)) / 65.0
-    vertical = np.minimum(np.arange(height), height - 1 - np.arange(height)) / 32.0
-    alpha *= np.clip(horizontal[None, :], 0, 1) * np.clip(vertical[:, None], 0, 1)
-    return np.dstack((crop, alpha.astype(np.uint8)))
 
 
 def largest_person(mask: np.ndarray) -> tuple[np.ndarray, tuple[int, int, int, int]] | None:
@@ -272,7 +216,7 @@ def make_flock(frame: np.ndarray, mask: np.ndarray, seed: int = 4411) -> CrowFlo
     height, width = mask.shape
     scale = min(width / REFERENCE_SIZE[0], height / REFERENCE_SIZE[1])
     rng = np.random.default_rng(seed)
-    sprites = load_crow_sprites()
+    sprites = crow_sprites()
 
     candidates = np.argwhere(cv2.erode(binary, np.ones((7, 7), np.uint8)) > 0)
     if len(candidates) < CROW_COUNT:
@@ -331,10 +275,7 @@ def make_flock(frame: np.ndarray, mask: np.ndarray, seed: int = 4411) -> CrowFlo
                                 float(rng.uniform(0.68, 1.25)), float(rng.uniform(7, 15) * scale),
                                 float(rng.uniform(-math.pi, math.pi)), float(rng.uniform(-4.5, 4.5))))
 
-    eyes = load_sharingan()
-    eye_width = min(round(width * 0.62), round(height * 1.16))
-    eye_height = max(1, round(eye_width * eyes.shape[0] / eyes.shape[1]))
-    sharingan = split_sprite(cv2.resize(eyes, (eye_width, eye_height), interpolation=cv2.INTER_AREA))
+    sharingan = split_sprite(sharingan_art(min(round(width * 0.62), round(height * 1.16))))
 
     mask = np.clip(mask.astype(np.float32), 0, 1)
     ys, xs = np.nonzero(mask > 0.01)
@@ -473,8 +414,10 @@ def draw_crow(frame: np.ndarray, flock: CrowFlock, crow: Crow, timeline: float) 
     path = (crow.origin, crow.control1, crow.control2, crow.destination)
     point = cubic(*path, progress)
     tangent = cubic(*path, min(1.0, progress + 0.015)) - point
-    # The sprite faces the viewer: it leans toward its flight a little, without hiding the wings.
-    angle = float(np.clip(math.degrees(math.atan2(tangent[1], tangent[0])) * 0.22, -30, 30))
+    # The crow is drawn flying right: mirrored when it flies left, and tilted toward its course.
+    left = bool(tangent[0] < 0)
+    heading = math.degrees(math.atan2(tangent[1], abs(tangent[0])))
+    angle = float(np.clip(heading if left else -heading, -MAX_TILT, MAX_TILT))
     pose = int(((timeline - crow.launch) * crow.frequency + crow.phase / (2 * math.pi)) * 5) % 5
     grow = 1.0 + 0.38 * progress if crow.depth > 1.1 else 1.0 - 0.42 * progress if crow.depth < 0.8 else 1.0
     if crow.depth > 1.1 and 0.12 < progress < 0.90:
@@ -491,15 +434,17 @@ def draw_crow(frame: np.ndarray, flock: CrowFlock, crow: Crow, timeline: float) 
                          2 if crow.hero else 1, cv2.LINE_AA)
     # Sizes in steps of 4 px and angles in steps of 10 degrees, so the caches stay small.
     target_width = max(12, int(round(crow.size * 2.15 * grow / 4) * 4))
-    sprite = flock.sprite_cache.get((pose, target_width))
+    sprite = flock.sprite_cache.get((pose, target_width, left))
     if sprite is None:
         target_height = max(8, round(target_width * SPRITE_HEIGHT / SPRITE_WIDTH))
         sprite = cv2.resize(flock.sprites[pose], (target_width, target_height),
                             interpolation=cv2.INTER_AREA if target_width < SPRITE_WIDTH else cv2.INTER_LINEAR)
+        if left:
+            sprite = np.ascontiguousarray(sprite[:, ::-1])
         if len(flock.sprite_cache) < 600:
-            flock.sprite_cache[(pose, target_width)] = sprite
+            flock.sprite_cache[(pose, target_width, left)] = sprite
     bucket = round(angle / 10) * 10
-    rotated = flock.rotated_cache.get((pose, target_width, bucket))
+    rotated = flock.rotated_cache.get((pose, target_width, left, bucket))
     if rotated is None:
         sh, sw = sprite.shape[:2]
         padding = max(6, int(max(sw, sh) * 0.25))
@@ -508,7 +453,7 @@ def draw_crow(frame: np.ndarray, flock: CrowFlock, crow: Crow, timeline: float) 
         rotated = split_sprite(cv2.warpAffine(sprite, transform, (sw + 2 * padding, sh + 2 * padding),
                                               flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT))
         if len(flock.rotated_cache) < 800:
-            flock.rotated_cache[(pose, target_width, bucket)] = rotated
+            flock.rotated_cache[(pose, target_width, left, bucket)] = rotated
     # The crow shows as its piece of body shrinks into it.
     blend_sprite(frame, rotated, round(point[0] - rotated.width / 2), round(point[1] - rotated.height / 2),
                  smoothstep(0.25, 0.85, (timeline - crow.launch) / TEAR_SECONDS))

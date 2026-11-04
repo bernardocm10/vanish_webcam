@@ -70,5 +70,5 @@ Your silhouette splits into about 80 pieces, one per crow. Ink cracks open aroun
 - **No anime frames** are included in the project.
 - The [wooden log](../assets/substitution_log.png) is an original illustration generated with ImageGen, using a supplied image as a visual reference.
 - The **smoke** is drawn in real time by `vanishcam/effects/naruto.py`, so it follows your position and scales with the video. A [CC0 smoke sprite sheet](https://opengameart.org/content/smoke-sprite-sheet) was considered, but the procedural animation adapts better to where you are in the frame.
-- Itachi's **crows** come from a five-pose sprite sheet and the **Sharingan** from a picture, both taken from the original VanishCam (see [assets](../assets/README.md)); the flight, the body breaking up and the red ink are drawn by `vanishcam/effects/itachi.py`.
+- Itachi's **crows** (five poses of a wing beat, mirrored when they fly left) and the **Sharingan** are drawn in code by `vanishcam/effects/itachi_art.py`, with no pictures; the flight, the body breaking up and the red ink are drawn by `vanishcam/effects/itachi.py`.
 - Goku's **speed lines** are drawn in code by `vanishcam/effects/goku.py`. Gesture detection runs in a background thread, so the video never waits for the models.

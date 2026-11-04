@@ -1,4 +1,5 @@
 import unittest
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
@@ -14,8 +15,9 @@ from vanishcam.effects.ash import CHIN, hands_up_reference
 from vanishcam.effects.goku import CHEEK_LEFT, CHEEK_RIGHT, FOREHEAD_TOP, NOSE_BRIDGE
 from vanishcam.effects.itachi import (
     BODY_RELEASE_SECONDS, CROW_COUNT, EFFECT_SECONDS, SPRITE_HEIGHT, SPRITE_WIDTH, BloodTint, chest_hands_pose,
-    load_crow_sprites, load_sharingan, make_flock, render_flock,
+    make_flock, render_flock,
 )
+from vanishcam.effects.itachi_art import crow_sprites, sharingan
 from vanishcam.modes import MODES, FrameInfo, ItachiMode
 from vanishcam.shortcuts import Shortcuts
 from tests.hand_fixtures import make_hand
@@ -107,16 +109,46 @@ class CrowFlockTests(unittest.TestCase):
         self.flock = make_flock(self.person, self.mask)
         self.tint = BloodTint()
 
-    def test_assets_load_as_five_poses_and_matted_eyes(self):
-        sprites = load_crow_sprites()
+    def test_crows_are_drawn_in_five_poses_inside_the_sprite(self):
+        sprites = crow_sprites()
         self.assertEqual(len(sprites), 5)
-        self.assertTrue(all(s.shape == (SPRITE_HEIGHT, SPRITE_WIDTH, 4) for s in sprites))
-        self.assertFalse(np.array_equal(sprites[0], sprites[2]))
-        eyes = load_sharingan()
+        for sprite in sprites:
+            self.assertEqual(sprite.shape, (SPRITE_HEIGHT, SPRITE_WIDTH, 4))
+            # A dark bird, whole: nothing cut by the sprite's edges.
+            self.assertLess(int(sprite[sprite[:, :, 3] > 200][:, :3].mean()), 80)
+            for border in (sprite[0], sprite[-1], sprite[:, 0], sprite[:, -1]):
+                self.assertLess(int(border[:, 3].max()), 40)
+        # The wing beats: every pose differs from the next.
+        for first, second in zip(sprites, sprites[1:]):
+            self.assertFalse(np.array_equal(first[:, :, 3], second[:, :, 3]))
+
+    def test_sharingan_is_two_red_eyes_on_nothing(self):
+        eyes = sharingan(600)
+        self.assertEqual(eyes.shape[1], 600)
         self.assertEqual(eyes.shape[2], 4)
         # No visible rectangle: the borders are transparent.
         for border in (eyes[0], eyes[-1], eyes[:, 0], eyes[:, -1]):
             self.assertTrue((border[:, 3] == 0).all())
+        # Red irises around black pupils, one in each half.
+        for center_x in (0.22, 0.78):
+            x, y = round(600 * center_x), round(eyes.shape[0] * 0.42)
+            iris = eyes[y - 30:y + 30, x - 45:x + 45]
+            red = (iris[:, :, 2] > 150) & (iris[:, :, 1] < 90) & (iris[:, :, 3] > 200)
+            self.assertGreater(int(red.sum()), 300)
+            self.assertLess(int(eyes[y, x, :3].max()), 40)
+
+    def test_crows_flying_left_are_mirrored(self):
+        frame = np.zeros((240, 320, 3), np.uint8)
+        rightward = itachi.Crow(np.float32([100, 120]), np.float32([140, 120]), np.float32([180, 120]),
+                                np.float32([220, 120]), 0.0, 2.0, 30.0, 0.0, 3.0, 1.0, False)
+        leftward = itachi.Crow(np.float32([220, 120]), np.float32([180, 120]), np.float32([140, 120]),
+                               np.float32([100, 120]), 0.0, 2.0, 30.0, 0.0, 3.0, 1.0, False)
+        right, left = frame.copy(), frame.copy()
+        itachi.draw_crow(right, self.flock, rightward, 1.0)
+        itachi.draw_crow(left, self.flock, leftward, 1.0)
+        # Both at the middle of the same line, one the mirror image of the other.
+        self.assertTrue(right.any())
+        self.assertLess(float(np.abs(right.astype(int) - left[:, ::-1].astype(int)).mean()), 1.0)
 
     def test_every_crow_leaves_from_the_body(self):
         self.assertEqual(len(self.flock.crows), CROW_COUNT)
@@ -299,9 +331,15 @@ class ItachiModeTests(unittest.TestCase):
         self.assertEqual(self.mode.phase, "ready")
         np.testing.assert_array_equal(self.frame(6.0), self.person)
 
-    def test_self_test_checks_the_crow_and_eye_pictures(self):
-        self.assertIn("itachi_crow_sheet.png", str(app.CROW_SHEET_PATH))
-        self.assertIn("sharingan.png", str(app.SHARINGAN_PATH))
+    def test_self_test_draws_the_crows_and_the_eyes(self):
+        with patch.object(app, "crow_sprites", wraps=app.crow_sprites) as crows, \
+                patch.object(app, "sharingan", wraps=app.sharingan) as eyes, \
+                patch.object(app, "create_segmenter"), patch.object(app, "create_recognizer"), \
+                patch.object(app, "create_meme_detector"), \
+                patch.object(Path, "is_file", return_value=True):  # The downloaded models may be missing.
+            self.assertEqual(app.self_test(), 0)
+        crows.assert_called_once()
+        eyes.assert_called_once()
 
 
 if __name__ == "__main__":

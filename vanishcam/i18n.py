@@ -234,7 +234,6 @@ STRINGS: dict[str, dict[str, str]] = {
         "mode.itachi.hint": "hands together at the chest — a flock of crows",
         "mode.itachi.instructions": "Touch your hands together in front of your chest: you scatter into crows and the room turns red. Part your hands and repeat to come back.",
         "itachi.no_person": "Nobody in the frame: step in to vanish or to come back.",
-        "itachi.unreadable": "Itachi picture unavailable: {path}",
         "sound.optional_missing": "No sound: put {name} in assets/ to enable it.",
         "sound.found": "Sound: {name}",
         # Sounds and the call microphone.
@@ -407,7 +406,6 @@ STRINGS: dict[str, dict[str, str]] = {
         "mode.itachi.hint": "mãos juntas no peito — revoada de corvos",
         "mode.itachi.instructions": "Junte as mãos na frente do peito: você se desfaz em corvos e a sala fica vermelha. Separe as mãos e repita para voltar.",
         "itachi.no_person": "Ninguém no quadro: entre para sumir ou para voltar.",
-        "itachi.unreadable": "Imagem do Itachi indisponível: {path}",
         "sound.optional_missing": "Sem som: coloque {name} em assets/ para ativar.",
         "sound.found": "Som: {name}",
         "sound.missing": "Áudio não encontrado: {path}",

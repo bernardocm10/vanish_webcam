@@ -12,8 +12,6 @@ resources = [
     (root / "models" / "gesture_recognizer.task", "models"),
     (root / "models" / "selfie_segmenter_landscape.tflite", "models"),
     (root / "assets" / "substitution_log.png", "assets"),
-    (root / "assets" / "itachi_crow_sheet.png", "assets"),
-    (root / "assets" / "sharingan.png", "assets"),
     (root / "assets" / "vanish.MP3", "assets"),
     (root / "assets" / "teleport.mp3", "assets"),
     (root / "assets" / "fonts" / "IBMPlexMono-Regular.ttf", "assets/fonts"),
