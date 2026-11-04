@@ -52,7 +52,7 @@ FULLSCREEN_HINT_SECONDS = 4.0
 TABS = ("live", "memes", "settings")
 MEME_ROW = 44  # Each gesture on the MEMES tab.
 MEME_THUMB = (52, 36)
-SHORTCUT_ROW = 28  # Each action on the SETTINGS tab.
+SHORTCUT_ROW = 24  # Each action on the SETTINGS tab.
 # A panel taller than the window scrolls below its top bar (the tabs stay in reach): with the wheel
 # over it, or with the bar on its right edge.
 SCROLLBAR = 6  # Drawn width.
@@ -120,6 +120,8 @@ class PanelView:
     detached: bool = False  # The video in its own window instead of beside the panel.
     shortcuts: Shortcuts = Shortcuts()
     memes: Memes = Memes()
+    calibrating: bool = False  # Capturing the room: NEW BACKGROUND becomes SKIP.
+    quick_start: bool = False  # Start without capturing the room (SETTINGS tab).
 
     @property
     def camera_name(self) -> str:
@@ -212,13 +214,24 @@ class Layout:
     height: int
 
 
+# On the SETTINGS tab: a switch, the line under it, and the room before the next section.
+SWITCH_BLOCK = CAMERA_HEIGHT + 14 + 16
+
+
+def settings_bottom(top: float) -> float:
+    """Where the SETTINGS tab's content ends: the room switch, the shortcuts and their reset key."""
+    shortcuts = top + SWITCH_BLOCK + SECTION - 16
+    return shortcuts + SWITCH_BLOCK + len(ACTIONS) * SHORTCUT_ROW + TILE_GAP + KEY_HEIGHT
+
+
 def layout(view: PanelView) -> Layout:
     effect = HEADER + SECTION
     gallery = effect + SELECT_HEIGHT + SECTION
     camera = gallery + gallery_height(view) + SECTION
     # Selector, the status line under it, then reopen and settings.
     controls = camera + CAMERA_HEIGHT + 24 + KEY_HEIGHT + SECTION
-    footer = controls + 2 * KEY_HEIGHT + TILE_GAP + 16
+    # Every tab shares the panel's height: the footer goes below the longest one.
+    footer = max(controls + 2 * KEY_HEIGHT + TILE_GAP + 16, settings_bottom(effect) + 16)
     return Layout(effect, gallery, camera, controls, footer, round(footer + FOOTER))
 
 
@@ -516,6 +529,8 @@ class PanelRenderer:
         buttons = (
             (t("panel.vanish"), key_legend(view, "vanish"), ("vanish",), view.manual_keys),
             (t("panel.reappear"), key_legend(view, "reappear"), ("reappear",), view.manual_keys),
+            # While the room is being captured, the same key skips the capture.
+            (t("panel.skip"), "", ("skip_calibration",), True) if view.calibrating else
             (t("panel.recapture"), key_legend(view, "recapture"), ("recapture",), view.can_recapture),
             (t("panel.window" if view.fullscreen else "panel.fullscreen"), key_legend(view, "fullscreen"),
              ("fullscreen",), True),
@@ -639,10 +654,26 @@ class PanelRenderer:
 
     @staticmethod
     def _settings(view, spots, capturing, text, rect, line, fit, hovered, clickable, section, key) -> None:
-        """SETTINGS tab: the shortcuts switch, one row per action, and restoring the defaults."""
-        shortcuts = view.shortcuts
+        """SETTINGS tab: starting without the room capture, then the shortcuts switch, one row per
+        action, and restoring the defaults."""
         y = spots.effect
-        section(y - 16, "A", t("panel.shortcuts"))
+
+        def toggle(y, on, label_on, label_off, action):
+            switch = (PAD, y, WIDTH - PAD, y + CAMERA_HEIGHT)
+            over = hovered(switch)
+            rect(switch, fill=HOVER if over else KEY, outline=INK if over else KEY_EDGE)
+            rect((PAD + 12, y + CAMERA_HEIGHT / 2 - 4, PAD + 20, y + CAMERA_HEIGHT / 2 + 4), fill=GREEN if on else RULE)
+            text((PAD + 30, y + CAMERA_HEIGHT / 2), t(label_on if on else label_off), 15, INK, "title", "lm")
+            clickable(switch, action)
+
+        section(y - 16, "A", t("panel.room"))
+        toggle(y, view.quick_start, "panel.quick_start_on", "panel.quick_start_off", ("quick_start", not view.quick_start))
+        y += CAMERA_HEIGHT + 14
+        text((PAD, y), fit(t("panel.quick_start_note"), 9.5, "mono", WIDTH - 2 * PAD), 9.5, GREY, "mono", "lm")
+        y += 16 + SECTION - 16
+
+        shortcuts = view.shortcuts
+        section(y - 16, "B", t("panel.shortcuts"))
         switch = (PAD, y, WIDTH - PAD, y + CAMERA_HEIGHT)
         over = hovered(switch)
         rect(switch, fill=HOVER if over else KEY, outline=INK if over else KEY_EDGE)

@@ -10,7 +10,7 @@ The panel is styled like a broadcast control surface: a light faceplate, black i
 
 It follows your system language (see [Language](configuration.md#language)). This guide uses the English labels, with the Portuguese ones in parentheses.
 
-The panel has three tabs in its black top bar: **LIVE** (*AO VIVO*), where the app opens, with everything below; **MEMES**, with the [meme reactions](memes.md); and **SETTINGS** (*AJUSTES*), with the [keyboard shortcuts](#keyboard-shortcuts). The screenshot shows the panel before the tabs were added.
+The panel has three tabs in its black top bar: **LIVE** (*AO VIVO*), where the app opens, with everything below; **MEMES**, with the [meme reactions](memes.md); and **SETTINGS** (*AJUSTES*), with [quick start](#quick-start-without-the-room-capture) and the [keyboard shortcuts](#keyboard-shortcuts). The screenshot shows the panel before the tabs were added.
 
 ## What is on the panel
 
@@ -39,7 +39,7 @@ The panel has three tabs in its black top bar: **LIVE** (*AO VIVO*), where the a
 - **SETTINGS** (*AJUSTES*) opens the webcam driver's own settings window (exposure, focus, white balance). Windows only.
 - **DETACH** (*DESTACAR*) moves the video to its own **VanishCam - Video** window, for a second monitor or OBS's window capture, and the panel shrinks to its own width. **ATTACH** (*ACOPLAR*), or closing the video window, brings it back. The app remembers where you left it.
 
-**D · Controls** (*Controles*) — **VANISH** (*SUMIR*), **REAPPEAR** (*REAPARECER*), **NEW BACKGROUND** (*NOVO FUNDO*), **FULLSCREEN** (*TELA CHEIA*). Buttons that do not apply right now are greyed out. With keyboard shortcuts on, each button shows its key in the corner.
+**D · Controls** (*Controles*) — **VANISH** (*SUMIR*), **REAPPEAR** (*REAPARECER*), **NEW BACKGROUND** (*NOVO FUNDO*), **FULLSCREEN** (*TELA CHEIA*). While the room is being captured, **NEW BACKGROUND** becomes **SKIP** (*PULAR*). Buttons that do not apply right now are greyed out. With keyboard shortcuts on, each button shows its key in the corner.
 
 <br clear="right">
 
@@ -60,6 +60,17 @@ Pick it in **B · Background**, or start the app with one from the command line:
 - There is no 4-second calibration while a picture is selected, and **NEW BACKGROUND** is disabled.
 - Going back to **REAL** reuses the room already captured. It only asks you to step out of the frame if the room was never captured in this session.
 - Turn off the call app's own background effects (blur, virtual background) so they do not stack with this one.
+
+## Quick start without the room capture
+
+To vanish, the app needs to know what is behind you, so it starts by asking you to step out of the frame for 4 seconds. You can skip that:
+
+- **SKIP** (*PULAR*), in place of NEW BACKGROUND during the countdown, starts right away this time.
+- **Quick start** (*Início rápido*), the first switch on the SETTINGS tab, skips it every time the app starts. It is saved with your other preferences. `--quick-start` does the same for one run.
+
+The app then takes the room from the first frame and guesses the part you cover, row by row from what it sees to your left and right: a desk, a shelf or the floor line carry on behind you, but a poster right behind your head cannot be guessed. Every bit of the room the camera sees afterwards replaces the guess at once, so **step aside for a moment** and the room is complete; the app says so ("Room learned"). Until then, vanishing shows the guess where you stood.
+
+For the cleanest result, use **NEW BACKGROUND**, which always does the full 4-second capture.
 
 ## Keyboard shortcuts
 

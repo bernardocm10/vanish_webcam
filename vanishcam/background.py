@@ -92,3 +92,90 @@ def apply_exposure_gain(
     if np.all(np.abs(gain - 1.0) < 0.004):
         return background
     return cv2.convertScaleAbs(background * gain.astype(np.float32).reshape(1, 1, 3))
+
+
+# A started-without-calibration room: what the person covers is painted from around it
+# until the camera sees it. Painted at this share of the size: it is a soft guess anyway.
+PAINT_SCALE = 0.25
+# Below this share of the frame still unseen, the room counts as learned.
+LEARNED_FRACTION = 0.002
+
+
+def covered_area(mask: np.ndarray) -> np.ndarray:
+    """Where the person is, with the same safety margin update_background keeps: bool, full size."""
+    height, width = mask.shape
+    small_size = (max(1, width // 4), max(1, height // 4))
+    occupied = (cv2.resize(mask, small_size, interpolation=cv2.INTER_AREA) > 0.05).astype(np.uint8)
+    grow = 2 * max(1, int(np.ceil(small_size[0] * 0.04))) + 1
+    occupied = cv2.dilate(occupied, np.ones((grow, grow), np.uint8))
+    return cv2.resize(occupied, (width, height), interpolation=cv2.INTER_NEAREST) > 0
+
+
+def paint_unseen(background: np.ndarray, unseen: np.ndarray) -> np.ndarray:
+    """The background with the unseen pixels guessed from what is beside them.
+
+    Each row is interpolated between the room seen to the left and to the right of the
+    person: a desk, a shelf or the floor line carry on behind them, where a radial
+    inpaint smears them into a fan. Rows with nothing seen are taken from the rows above
+    and below. Worked out at PAINT_SCALE of the size: it is a soft guess anyway.
+    """
+    points = cv2.findNonZero(unseen.astype(np.uint8))
+    if points is None:
+        return background
+    height, width = unseen.shape
+    x, y, box_width, box_height = cv2.boundingRect(points)
+    # Whole rows of the box: the room beside the person is what the guess is made of.
+    pad = max(height, width) // 16
+    y1, y2 = max(0, y - pad), min(height, y + box_height + pad)
+    region = background[y1:y2]
+    hole = unseen[y1:y2]
+    small_size = (max(8, round(width * PAINT_SCALE)), max(8, round((y2 - y1) * PAINT_SCALE)))
+    small = cv2.resize(region, small_size, interpolation=cv2.INTER_AREA).astype(np.float32)
+    small_hole = cv2.dilate(cv2.resize(hole.astype(np.uint8), small_size, interpolation=cv2.INTER_NEAREST),
+                            np.ones((3, 3), np.uint8)) > 0
+    columns = np.arange(small_size[0], dtype=np.float32)
+    seen_rows = ~small_hole.all(axis=1)
+    for row in np.nonzero(small_hole.any(axis=1) & seen_rows)[0]:
+        known = ~small_hole[row]
+        for channel in range(3):
+            small[row, small_hole[row], channel] = np.interp(
+                columns[small_hole[row]], columns[known], small[row, known, channel])
+    if seen_rows.any() and not seen_rows.all():
+        # Rows hidden from side to side: from the nearest guessed rows above and below.
+        rows = np.arange(small_size[1], dtype=np.float32)
+        for column in range(small_size[0]):
+            for channel in range(3):
+                small[~seen_rows, column, channel] = np.interp(
+                    rows[~seen_rows], rows[seen_rows], small[seen_rows, column, channel])
+    # Softer across the rows than along them: no visible scanlines.
+    small = cv2.GaussianBlur(small, (0, 0), sigmaX=0.6, sigmaY=1.2)
+    painted = cv2.resize(np.clip(small, 0, 255).astype(np.uint8), (width, y2 - y1), interpolation=cv2.INTER_LINEAR)
+    result = background.copy()
+    result[y1:y2][hole] = painted[hole]
+    return result
+
+
+def guess_background(frame: np.ndarray, mask: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """A room from a single frame with the person in it, and where it is still a guess."""
+    unseen = covered_area(mask)
+    return paint_unseen(frame, unseen), unseen
+
+
+def learn_unseen(
+    background: np.ndarray, frame: np.ndarray, mask: np.ndarray, unseen: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray | None]:
+    """Take what the camera now sees of the guessed area as it is, and paint the rest again.
+
+    The guess is replaced at once rather than blended in slowly: it is only a guess.
+    Returns the background and what is still unseen, None once the room is learned.
+    """
+    revealed = unseen & ~covered_area(mask)
+    if revealed.any():
+        background = background.copy()
+        background[revealed] = frame[revealed]
+        unseen = unseen & ~revealed
+        # The guess follows its new surroundings.
+        background = paint_unseen(background, unseen)
+    if np.count_nonzero(unseen) < unseen.size * LEARNED_FRACTION:
+        return background, None
+    return background, unseen
