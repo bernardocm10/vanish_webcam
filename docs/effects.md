@@ -57,7 +57,7 @@ You freeze into a statue of grey ash, the ash spreading from your head down whil
 
 **Gesture:** touch your hands together in front of your chest, below your chin and under your face, with both hands visible. Palms pressed together or fingertips touching both count; hands only close to each other do not.
 
-Your silhouette breaks into about 80 crows that take off from your body and fly away in curves, a few big ones crossing in front of the camera, with feathers drifting and a thin ink line where the body is breaking. The room turns to translucent red ink, and the Sharingan eyes show at the top of the frame for a moment. The red room stays while you are invisible. The effect lasts about 4 seconds.
+Your silhouette splits into about 80 pieces, one per crow. Ink cracks open around each piece just before it goes; then it tears off, turns dark, and shrinks into its crow as the crow takes flight. The shoulders and arms go first, then the head, and a neck and torso core last. The crows fly away in curves, a few big ones crossing in front of the camera, with feathers drifting. The room turns to translucent red ink, and the Sharingan eyes show at the top of the frame for a moment. The red room stays while you are invisible. The effect lasts about 4 seconds.
 
 **To come back**, part your hands, step back into the frame, and touch them at your chest again (or click **REAPPEAR**): the crows converge and rebuild you, and the room goes back to normal. Your silhouette is captured once at the start of each direction, where you stand at that moment.
 

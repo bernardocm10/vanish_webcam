@@ -1,8 +1,9 @@
 """Itachi: hands together at the chest, and the silhouette breaks into a flock of crows.
 
-Each crow starts at a point of the captured silhouette and cuts its own winged hole
-in the body as it takes off; the room turns to red ink and the Sharingan shows for a
-moment at the top. Played backwards, the crows converge and rebuild the person.
+The captured silhouette is split into one piece per crow. Each piece darkens like ink
+cracking through it, tears off, and shrinks into its crow as it takes flight; the room
+turns to red ink and the Sharingan shows for a moment at the top. Played backwards, the
+crows converge and rebuild the person.
 
 The crow sheet and the Sharingan picture come from the original VanishCam
 (Nicovic17/vanish_webcam), like the effect's drawing ideas.
@@ -28,6 +29,12 @@ FIRST_CROW_SECONDS = 0.14
 LAST_CROW_SECONDS = 2.82
 # Hands together at the chest for a moment: clapping passes through the pose.
 HOLD_SECONDS = 0.2
+# A piece of body darkens this long before it tears off...
+CRACK_SECONDS = 0.30
+# ...crumbles from the edges inwards over this...
+CRUMBLE_SECONDS = 0.12
+# ...and takes this long to fly off and shrink into its crow.
+TEAR_SECONDS = 0.45
 
 CROW_SHEET_PATH = ASSETS_DIR / "itachi_crow_sheet.png"
 SHARINGAN_PATH = ASSETS_DIR / "sharingan.png"
@@ -224,6 +231,18 @@ class Feather:
     spin: float
 
 
+@dataclass(frozen=True)
+class Shard:
+    """The piece of body one crow takes with it: the source pixels of its territory."""
+
+    left: int            # where the piece sits in the frame
+    top: int
+    color: np.ndarray    # BGR, contiguous
+    alpha: np.ndarray    # float32: the mask inside the territory
+    release: np.ndarray  # float32: when each pixel tears off
+    end_scale: float     # the size it shrinks to, about the crow's body
+
+
 @dataclass
 class CrowFlock:
     """The silhouette captured once, the crows leaving it, and when each pixel goes."""
@@ -235,6 +254,9 @@ class CrowFlock:
     crows: list[Crow]
     feathers: list[Feather]
     release: np.ndarray             # float32 per pixel: when that piece of body leaves
+    shards: list[Shard]             # one per crow, in the same order
+    ink: np.ndarray                 # the ink color over the blended area, for the cracks
+    cracks: np.ndarray              # float32 over the blended area: 1 on the lines between pieces
     sprites: tuple[np.ndarray, ...]
     sharingan: Sprite               # already sized for the frame
     sprite_cache: dict = field(default_factory=dict)
@@ -256,14 +278,16 @@ def make_flock(frame: np.ndarray, mask: np.ndarray, seed: int = 4411) -> CrowFlo
     if len(candidates) < CROW_COUNT:
         candidates = np.argwhere(binary > 0)
     relative_y = (candidates[:, 0] - top) / max(1, body_height)
-    # More crows from the shoulders and the chest, where the eye goes first.
-    weights = np.where((relative_y > 0.18) & (relative_y < 0.68), 3.0, 1.0)
+    # More crows, so smaller pieces, from the head down to the chest, where the eye goes first.
+    weights = np.where(relative_y < 0.68, 3.0, 1.0)
     chosen = candidates[rng.choice(len(candidates), CROW_COUNT, replace=len(candidates) < CROW_COUNT,
                                    p=weights / weights.sum())]
-    # Shoulders, arms and torso lead and the face follows; the random part breaks the rows
-    # without scrambling the anatomy.
+    # Shoulders and arms lead, the head follows, and a neck and torso core goes last: no
+    # floating face. The random part breaks the rows without scrambling the anatomy.
     vertical = (chosen[:, 0] - top) / max(1, body_height)
-    priority = np.abs(vertical - 0.39) * 0.65 + np.where(vertical < 0.20, 0.42, 0.0) + rng.uniform(0, 0.27, CROW_COUNT)
+    core = (vertical >= 0.18) & (vertical < 0.76) & (np.abs(chosen[:, 1] - (left + body_width / 2)) < body_width * 0.18)
+    priority = (np.abs(vertical - 0.39) * 0.65 + np.where(vertical < 0.20, 0.42, 0.0) + np.where(core, 0.75, 0.0)
+                + rng.uniform(0, 0.27, CROW_COUNT))
     order = np.argsort(priority)
     launches = np.empty(CROW_COUNT, np.float32)
     launches[order] = np.linspace(FIRST_CROW_SECONDS, LAST_CROW_SECONDS, CROW_COUNT)
@@ -315,58 +339,90 @@ def make_flock(frame: np.ndarray, mask: np.ndarray, seed: int = 4411) -> CrowFlo
     mask = np.clip(mask.astype(np.float32), 0, 1)
     ys, xs = np.nonzero(mask > 0.01)
     area = (int(xs.min()), int(ys.min()), int(xs.max()) + 1, int(ys.max()) + 1)
-    release = release_map(mask, (left, top, body_width, body_height), chosen, launches, crows, sprites, rng)
+    labels, release, cracks = fragment(mask, area, chosen, launches, body_height, scale, rng)
+    shards = cut_shards(frame, mask, area, labels, release, crows)
+    ink = np.empty((area[3] - area[1], area[2] - area[0], 3), np.uint8)
+    ink[:] = INK
     return CrowFlock(frame.copy(), mask, (left, top, body_width, body_height), area, crows, feathers,
-                     release, sprites, sharingan)
+                     release, shards, ink, cracks, sprites, sharingan)
 
 
-def release_map(mask: np.ndarray, bounds: tuple[int, int, int, int], origins: np.ndarray,
-                launches: np.ndarray, crows: list[Crow], sprites: tuple[np.ndarray, ...],
-                rng: np.random.Generator) -> np.ndarray:
-    """When each pixel of the body leaves: the territory of the nearest crow, torn a little."""
+def smooth_noise(rng: np.random.Generator, shape: tuple[int, int], cell: float) -> np.ndarray:
+    """Values in -1..1 that change smoothly over about cell pixels."""
+    height, width = shape
+    coarse = rng.uniform(-1, 1, (max(2, round(height / cell)), max(2, round(width / cell)))).astype(np.float32)
+    return cv2.resize(coarse, (width, height), interpolation=cv2.INTER_CUBIC)
+
+
+def fragment(mask: np.ndarray, area: tuple[int, int, int, int], origins: np.ndarray, launches: np.ndarray,
+             body_height: int, scale: float, rng: np.random.Generator) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Split the body into one piece per crow, and say when each pixel tears off.
+
+    Returns, over the frame, the crow each pixel belongs to (-1 outside the area) and its
+    release time, and over the area the crack lines between pieces. The pieces are the
+    territories of the nearest crow, measured on wobbly coordinates so their borders are
+    torn rather than straight; each piece crumbles from its cracks inwards over CRUMBLE_SECONDS.
+    """
     height, width = mask.shape
-    step = 4
-    small_h, small_w = max(1, -(-height // step)), max(1, -(-width // step))
+    x1, y1, x2, y2 = area
+    step = 2
+    small_h, small_w = max(1, -(-(y2 - y1) // step)), max(1, -(-(x2 - x1) // step))
     ys, xs = np.mgrid[:small_h, :small_w].astype(np.float32) * step
+    wobble = 0.035 * body_height
+    xs += x1 + smooth_noise(rng, (small_h, small_w), 18 / step) * wobble
+    ys += y1 + smooth_noise(rng, (small_h, small_w), 18 / step) * wobble
     nearest = np.full((small_h, small_w), np.inf, np.float32)
-    release = np.zeros((small_h, small_w), np.float32)
-    for (row, column), launch in zip(origins, launches):
+    small_labels = np.zeros((small_h, small_w), np.int16)
+    for index, (row, column) in enumerate(origins):
         distance = (xs - column) ** 2 + (ys - row) ** 2
         closer = distance < nearest
         nearest[closer] = distance[closer]
-        release[closer] = launch
-    # A small organic tear across each territory, instead of straight tile borders.
-    noise = rng.uniform(-0.055, 0.055, (max(2, small_h // 6), max(2, small_w // 6))).astype(np.float32)
-    release += cv2.resize(noise, (small_w, small_h), interpolation=cv2.INTER_CUBIC) + 0.10
-    release = np.clip(release, 0.09, BODY_RELEASE_SECONDS - 0.06)
-    release = cv2.resize(release, (width, height), interpolation=cv2.INTER_LINEAR)
-    # Each crow cuts a hole of its own shape as it takes off; the territories above
-    # then remove the body between those winged holes.
-    wings = sprites[2][:, :, 3]
-    for crow in crows:
-        bird_width = max(14, round(crow.size * 2.15))
-        bird_height = max(10, round(bird_width * SPRITE_HEIGHT / SPRITE_WIDTH))
-        wing = cv2.resize(wings, (bird_width, bird_height), interpolation=cv2.INTER_LINEAR)
-        x, y = round(crow.origin[0] - bird_width / 2), round(crow.origin[1] - bird_height / 2)
-        x1, y1, x2, y2 = max(0, x), max(0, y), min(width, x + bird_width), min(height, y + bird_height)
-        if x1 < x2 and y1 < y2:
-            target = release[y1:y2, x1:x2]
-            np.minimum(target, crow.launch + 0.035, out=target, where=wing[y1 - y:y2 - y, x1 - x:x2 - x] > 110)
-    # Keep a neck and torso core while the shoulders break up, and let the head go
-    # before it: no floating face.
-    left, top, body_width, body_height = bounds
-    y1, y2, x1, x2 = top, min(height, top + body_height), left, min(width, left + body_width)
-    region = release[y1:y2, x1:x2]
-    yy, xx = np.ogrid[y1:y2, x1:x2]
-    vertical = (yy - top) / max(1, body_height)
-    core = (vertical >= 0.18) & (vertical < 0.76) & (np.abs(xx - (left + body_width * 0.5)) < body_width * 0.18)
-    np.maximum(region, 1.86, out=region, where=core)
-    head = (vertical < 0.22) & (mask[y1:y2, x1:x2] > 0.48)
-    np.clip(region, 1.03, 1.70, out=region, where=head)
-    # The soft edge of the mask goes with the earliest body next to it: no outline lingers.
-    fringe = (mask > 0.01) & (mask <= 0.48)
-    release[fringe] = cv2.erode(release, np.ones((9, 9), np.uint8))[fringe]
-    return release
+        small_labels[closer] = index
+    labels = np.full((height, width), -1, np.int16)
+    region = cv2.resize(small_labels, (x2 - x1, y2 - y1), interpolation=cv2.INTER_NEAREST)
+    labels[y1:y2, x1:x2] = region
+    # The lines where two pieces meet, and how far each pixel is from one.
+    border = np.zeros(region.shape, bool)
+    border[:, 1:] |= region[:, 1:] != region[:, :-1]
+    border[1:, :] |= region[1:, :] != region[:-1, :]
+    distance = cv2.distanceTransform((~border).astype(np.uint8), cv2.DIST_L2, 3)
+    line_width = max(1.2, 1.6 * scale)
+    cracks = np.exp(-(distance / line_width) ** 2).astype(np.float32)
+    # Each piece breaks from its cracks inwards, a little unevenly.
+    depth = np.clip(distance / (14 * scale), 0, 1) + smooth_noise(rng, region.shape, 5) * 0.15
+    release = np.full((height, width), np.inf, np.float32)
+    # Softened a little: the pieces are found on a coarser grid, and their edges must not show its steps.
+    release[y1:y2, x1:x2] = cv2.GaussianBlur(launches[region] + np.clip(depth, 0, 1) * CRUMBLE_SECONDS,
+                                             (0, 0), max(1.0, 1.5 * scale))
+    return labels, release, cracks
+
+
+def cut_shards(frame: np.ndarray, mask: np.ndarray, area: tuple[int, int, int, int], labels: np.ndarray,
+               release: np.ndarray, crows: list[Crow]) -> list[Shard]:
+    """Copy each crow's piece of body out of the frame, cropped to the piece."""
+    x1, y1, x2, y2 = area
+    region = labels[y1:y2, x1:x2]
+    ys, xs = np.nonzero(region >= 0)
+    owners = region[ys, xs]
+    order = np.argsort(owners, kind="stable")
+    ys, xs, owners = ys[order], xs[order], owners[order]
+    bounds = np.searchsorted(owners, np.arange(len(crows) + 1))
+    shards = []
+    for index, crow in enumerate(crows):
+        piece = slice(bounds[index], bounds[index + 1])
+        if piece.start == piece.stop:
+            shards.append(Shard(0, 0, np.zeros((0, 0, 3), np.uint8), np.zeros((0, 0), np.float32),
+                                np.zeros((0, 0), np.float32), 1.0))
+            continue
+        top, bottom = y1 + int(ys[piece].min()), y1 + int(ys[piece].max()) + 1
+        left, right = x1 + int(xs[piece].min()), x1 + int(xs[piece].max()) + 1
+        inside = labels[top:bottom, left:right] == index
+        alpha = np.where(inside, mask[top:bottom, left:right], 0).astype(np.float32)
+        # The piece ends about as big as the crow's body, never bigger than it was.
+        end_scale = min(1.0, crow.size * 0.9 / max(1, right - left, bottom - top))
+        shards.append(Shard(left, top, np.ascontiguousarray(frame[top:bottom, left:right]), alpha,
+                            np.ascontiguousarray(release[top:bottom, left:right]), end_scale))
+    return shards
 
 
 def mix(destination: np.ndarray, source: np.ndarray, alpha: np.ndarray) -> None:
@@ -453,9 +509,39 @@ def draw_crow(frame: np.ndarray, flock: CrowFlock, crow: Crow, timeline: float) 
                                               flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT))
         if len(flock.rotated_cache) < 800:
             flock.rotated_cache[(pose, target_width, bucket)] = rotated
-    # Each crow fades in over 0.1 s: the feathers form the edge of the hole it leaves.
+    # The crow shows as its piece of body shrinks into it.
     blend_sprite(frame, rotated, round(point[0] - rotated.width / 2), round(point[1] - rotated.height / 2),
-                 min(1.0, (timeline - crow.launch) / 0.10))
+                 smoothstep(0.25, 0.85, (timeline - crow.launch) / TEAR_SECONDS))
+
+
+def draw_shard(frame: np.ndarray, shard: Shard, crow: Crow, timeline: float) -> None:
+    """The torn piece of body: darker and darker, shrinking into its crow as it follows it."""
+    flight = (timeline - crow.launch) / TEAR_SECONDS
+    if not 0 <= flight < 1 or shard.alpha.size == 0:
+        return
+    ease = smoothstep(0.0, 1.0, flight)
+    # Only what has torn off; the rest is still on the body.
+    torn = 1.0 - np.clip((shard.release - timeline) * np.float32(1 / 0.04), 0, 1)
+    alpha = shard.alpha * torn * np.float32(1.0 - smoothstep(0.55, 1.0, flight))
+    # A third ink when it tears off (the cracks), nearly all ink soon after: it is becoming a crow.
+    dark = 0.35 + 0.6 * smoothstep(0.0, 0.4, flight)
+    color = cv2.convertScaleAbs(shard.color, alpha=1.0 - dark, beta=dark * float(np.mean(INK)))
+    scale = 1.0 + (shard.end_scale - 1.0) * ease
+    point = cubic(crow.origin, crow.control1, crow.control2, crow.destination, (timeline - crow.launch) / crow.duration)
+    anchor = crow.origin + (point - crow.origin) * ease
+    if scale < 0.98:
+        size = (max(1, round(alpha.shape[1] * scale)), max(1, round(alpha.shape[0] * scale)))
+        color = cv2.resize(color, size, interpolation=cv2.INTER_AREA)
+        alpha = cv2.resize(alpha, size, interpolation=cv2.INTER_AREA)
+    # Shrinks around the crow's starting point, which moves with the crow.
+    x = round(anchor[0] - (crow.origin[0] - shard.left) * scale)
+    y = round(anchor[1] - (crow.origin[1] - shard.top) * scale)
+    height, width = frame.shape[:2]
+    x1, y1 = max(0, x), max(0, y)
+    x2, y2 = min(width, x + alpha.shape[1]), min(height, y + alpha.shape[0])
+    if x1 < x2 and y1 < y2:
+        mix(frame[y1:y2, x1:x2], np.ascontiguousarray(color[y1 - y:y2 - y, x1 - x:x2 - x]),
+            np.ascontiguousarray(alpha[y1 - y:y2 - y, x1 - x:x2 - x]))
 
 
 def draw_feather(frame: np.ndarray, feather: Feather, timeline: float) -> None:
@@ -520,9 +606,19 @@ def render_flock(background: np.ndarray, flock: CrowFlock, tint: BloodTint, age:
         if crow.depth < 0.8:
             draw_crow(output, flock, crow, timeline)
     x1, y1, x2, y2 = flock.area
-    remaining = np.clip((flock.release[y1:y2, x1:x2] - timeline) * np.float32(1 / 0.055), 0, 1)
-    mix(output[y1:y2, x1:x2], np.ascontiguousarray(flock.source[y1:y2, x1:x2]), flock.mask[y1:y2, x1:x2] * remaining)
+    until = flock.release[y1:y2, x1:x2] - timeline
+    body = np.ascontiguousarray(flock.source[y1:y2, x1:x2])
+    # In the moment before a piece tears off, ink cracks open around it and it darkens
+    # a little (nothing on the first frame).
+    coming = np.clip(1.0 - until * np.float32(1 / CRACK_SECONDS), 0, 1) * np.float32(smoothstep(0, 0.12, timeline))
+    if coming.any():
+        ink = np.minimum(coming * (flock.cracks * np.float32(0.9) + np.float32(0.25)), np.float32(0.95))
+        body = cv2.blendLinear(flock.ink, body, ink, 1.0 - ink)
+    remaining = np.clip(until * np.float32(1 / 0.04), 0, 1)
+    mix(output[y1:y2, x1:x2], body, flock.mask[y1:y2, x1:x2] * remaining)
     draw_ink_edge(output, flock, timeline)
+    for shard, crow in zip(flock.shards, flock.crows):
+        draw_shard(output, shard, crow, timeline)
     for feather in flock.feathers:
         draw_feather(output, feather, timeline)
     draw_sharingan(output, flock, timeline)
