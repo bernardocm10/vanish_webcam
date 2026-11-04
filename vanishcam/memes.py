@@ -29,7 +29,7 @@ HOLD_SECONDS = 0.25
 PRAYER_HOLD_SECONDS = 0.1
 DETECT_INTERVAL = 0.1
 # Meme gestures close to an effect's own trigger: both could fire at once.
-CONFLICTS: dict[str, str] = {"prayer": "naruto", "hands_behind_head": "ash"}
+CONFLICTS: dict[str, tuple[str, ...]] = {"prayer": ("naruto", "itachi"), "hands_behind_head": ("ash",)}
 
 _UNSET = object()
 

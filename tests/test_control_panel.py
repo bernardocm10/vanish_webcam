@@ -117,7 +117,7 @@ class UserDataTests(unittest.TestCase):
 
 class PanelRendererTests(unittest.TestCase):
     def test_panel_and_keys_follow_the_registry_order(self):
-        order = ["normal", "naruto", "goku", "particles", "ash"]
+        order = ["normal", "naruto", "goku", "particles", "ash", "itachi"]
         self.assertEqual(list(MODES), order)
         self.assertEqual([card.key for card in MODE_CARDS], order)
         for number, name in enumerate(order, start=1):
@@ -317,6 +317,9 @@ class MemesTabTests(unittest.TestCase):
         drawn = ControlPanelTabsTests.drawn_text(self, PanelView("naruto", ""), tab="memes")
         self.assertIn(warning, drawn)
         self.assertNotIn(warning, ControlPanelTabsTests.drawn_text(self, PanelView("goku", ""), tab="memes"))
+        # Hands together at the chest is the prayer gesture too.
+        itachi = t("panel.meme_conflict", effect=t("mode.itachi.title"))
+        self.assertIn(itachi, ControlPanelTabsTests.drawn_text(self, PanelView("itachi", ""), tab="memes"))
 
 
 class ControlPanelWindowTests(unittest.TestCase):
