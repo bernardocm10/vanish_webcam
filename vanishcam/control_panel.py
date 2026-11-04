@@ -22,6 +22,7 @@ import cv2
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont, ImageOps
 
+from .effects.goku import HOLD_SECONDS as GOKU_HOLD_SECONDS, step_hold
 from .i18n import t
 from .meme_poses import GESTURES
 from .memes import CONFLICTS, Memes
@@ -52,7 +53,7 @@ FULLSCREEN_HINT_SECONDS = 4.0
 TABS = ("live", "memes", "settings")
 MEME_ROW = 44  # Each gesture on the MEMES tab.
 MEME_THUMB = (52, 36)
-SHORTCUT_ROW = 24  # Each action on the SETTINGS tab.
+SHORTCUT_ROW = 22  # Each action on the SETTINGS tab.
 # A panel taller than the window scrolls below its top bar (the tabs stay in reach): with the wheel
 # over it, or with the bar on its right edge.
 SCROLLBAR = 6  # Drawn width.
@@ -122,6 +123,7 @@ class PanelView:
     memes: Memes = Memes()
     calibrating: bool = False  # Capturing the room: NEW BACKGROUND becomes SKIP.
     quick_start: bool = False  # Start without capturing the room (SETTINGS tab).
+    goku_hold: float = GOKU_HOLD_SECONDS  # How long Goku's gesture is held (SETTINGS tab).
 
     @property
     def camera_name(self) -> str:
@@ -216,11 +218,13 @@ class Layout:
 
 # On the SETTINGS tab: a switch, the line under it, and the room before the next section.
 SWITCH_BLOCK = CAMERA_HEIGHT + 14 + 16
+# Goku's hold time under the quick start switch.
+STEPPER_BLOCK = CAMERA_HEIGHT + TILE_GAP
 
 
 def settings_bottom(top: float) -> float:
-    """Where the SETTINGS tab's content ends: the room switch, the shortcuts and their reset key."""
-    shortcuts = top + SWITCH_BLOCK + SECTION - 16
+    """Where the SETTINGS tab's content ends: the options, the shortcuts and their reset key."""
+    shortcuts = top + SWITCH_BLOCK + STEPPER_BLOCK + SECTION - 16
     return shortcuts + SWITCH_BLOCK + len(ACTIONS) * SHORTCUT_ROW + TILE_GAP + KEY_HEIGHT
 
 
@@ -666,11 +670,27 @@ class PanelRenderer:
             text((PAD + 30, y + CAMERA_HEIGHT / 2), t(label_on if on else label_off), 15, INK, "title", "lm")
             clickable(switch, action)
 
-        section(y - 16, "A", t("panel.room"))
+        section(y - 16, "A", t("panel.options"))
         toggle(y, view.quick_start, "panel.quick_start_on", "panel.quick_start_off", ("quick_start", not view.quick_start))
         y += CAMERA_HEIGHT + 14
         text((PAD, y), fit(t("panel.quick_start_note"), 9.5, "mono", WIDTH - 2 * PAD), 9.5, GREY, "mono", "lm")
-        y += 16 + SECTION - 16
+        y += 16
+
+        # Goku's hold time: shorter or longer, a step at a time.
+        row = (PAD, y, WIDTH - PAD, y + CAMERA_HEIGHT)
+        rect(row, fill=KEY, outline=KEY_EDGE)
+        seconds = f"{view.goku_hold:g}"
+        text((PAD + 12, y + CAMERA_HEIGHT / 2), t("panel.goku_hold", seconds=seconds), 15, INK, "title", "lm")
+        for index, (label, direction) in enumerate((("−", -1), ("+", 1))):
+            target = step_hold(view.goku_hold, direction)
+            box = (WIDTH - PAD - 89 + index * 44, y + 5, WIDTH - PAD - 49 + index * 44, y + CAMERA_HEIGHT - 5)
+            enabled = target is not None
+            over = enabled and hovered(box)
+            rect(box, fill=HOVER if over else FACE, outline=INK if over else (KEY_EDGE if enabled else RULE))
+            text(((box[0] + box[2]) / 2, (box[1] + box[3]) / 2), label, 16, INK if enabled else PALE, "mono-bold", "mm")
+            if enabled:
+                clickable(box, ("goku_hold", target))
+        y += STEPPER_BLOCK + SECTION - 16
 
         shortcuts = view.shortcuts
         section(y - 16, "B", t("panel.shortcuts"))

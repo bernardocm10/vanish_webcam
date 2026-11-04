@@ -12,6 +12,23 @@ from ..paths import ASSETS_DIR
 
 
 HOLD_SECONDS = 1.0
+# What the SETTINGS tab offers for how long to hold the gesture.
+HOLD_CHOICES = (0.1, 0.25, 0.5, 0.75, 1.0, 1.5, 2.0, 3.0)
+
+
+def valid_hold(value) -> float | None:
+    """A saved hold time, if it is one the app can use."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    value = float(value)
+    return value if HOLD_CHOICES[0] <= value <= HOLD_CHOICES[-1] else None
+
+
+def step_hold(current: float, direction: int) -> float | None:
+    """The next hold time up (+1) or down (-1) from current, or None at the end."""
+    if direction > 0:
+        return next((choice for choice in HOLD_CHOICES if choice > current + 1e-6), None)
+    return next((choice for choice in reversed(HOLD_CHOICES) if choice < current - 1e-6), None)
 EFFECT_SECONDS = 1.5
 SOUND_NAME = "teleport.MP3"
 
