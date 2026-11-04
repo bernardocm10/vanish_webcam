@@ -4,7 +4,7 @@
 
 <img src="panel.png" alt="VanishCam control panel" width="300" align="right">
 
-VanishCam opens a single window: the panel on the left and the live video filling the rest. Resize or maximize it and the video grows with it, never stretched. Everything you click lives in the panel, so the video you send to a call shows only you and the effect.
+VanishCam opens a single window: the panel on the left and the live video filling the rest. Resize or maximize it and the video grows with it, never stretched. On a small screen the window starts within it, and when the window is shorter than the panel, the panel scrolls: with the mouse wheel over it, or by dragging the thin bar on its right edge. The black top bar with the tabs stays in place. Everything you click lives in the panel, so the video you send to a call shows only you and the effect.
 
 The panel is styled like a broadcast control surface: a light faceplate, black ink, and a single red signal color for whatever is live.
 
@@ -22,7 +22,7 @@ The panel has three tabs in its black top bar: **LIVE** (*AO VIVO*), where the a
 | Amber | Capturing the background (step out of the frame), or opening the camera |
 | Red | Vanishing, invisible, or reappearing |
 
-**A · Effect** (*Efeito*) — the active effect. Click it to open the list and pick another, or press `1`–`5`; the active one is marked **■ LIVE** (*ATIVO*). Switching keeps the camera, the virtual webcam, the call microphone, and the background as they are: no restart, no new calibration.
+**A · Effect** (*Efeito*) — the active effect. Click it to open the list and pick another, or press `1`–`6`; the active one is marked **■ LIVE** (*ATIVO*). Switching keeps the camera, the virtual webcam, the call microphone, and the background as they are: no restart, no new calibration.
 
 **B · Background** (*Fundo*) — choose what is behind you:
 
