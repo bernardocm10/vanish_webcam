@@ -74,7 +74,7 @@ To use them, open **SETTINGS** (*AJUSTES*) and click **Shortcuts off** (*Atalhos
 | Capture a new real background | `SPACE` |
 | Fullscreen with only the video (in its own window when detached) | `F` |
 | Detach the video to its own window, or attach it back | `D` |
-| Switch effect (Normal, Naruto, Goku, Particles, Ash) | `1`–`5` |
+| Switch effect (Normal, Naruto, Goku, Particles, Ash, Itachi) | `1`–`6` |
 | Quit | none |
 
 - **To change a key**, click its row and press the new key: a letter, a digit, punctuation, or space. Combinations with Ctrl or Alt and the function keys are not supported, because the window cannot tell them apart reliably on every system. `ESC` cancels. A key already used by another action is refused, and the panel says which one has it.
