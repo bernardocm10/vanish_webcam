@@ -16,6 +16,7 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from .effects.goku import HOLD_SECONDS as GOKU_HOLD_SECONDS, valid_hold
 from .i18n import t
 from .memes import Memes
 from .shortcuts import Shortcuts
@@ -43,6 +44,7 @@ class Settings:
     shortcuts: Shortcuts = field(default_factory=Shortcuts)
     memes: Memes = field(default_factory=Memes)
     quick_start: bool = False  # Start without capturing the room.
+    goku_hold: float = GOKU_HOLD_SECONDS  # How long Goku's gesture is held to vanish or come back.
 
 
 class UserData:
@@ -73,8 +75,9 @@ class UserData:
         shortcuts = Shortcuts.from_json(data.get("shortcuts"))
         memes = Memes.from_json(data.get("memes"), self.root)
         quick_start = data.get("quick_start") is True
+        goku_hold = valid_hold(data.get("goku_hold")) or GOKU_HOLD_SECONDS
         return Settings(mode, Path(background) if background else None, camera, detached, shortcuts, memes,
-                        quick_start)
+                        quick_start, goku_hold)
 
     def save(self, settings: Settings) -> None:
         data = {
@@ -85,6 +88,7 @@ class UserData:
             "shortcuts": settings.shortcuts.to_json(),
             "memes": settings.memes.to_json(self.root),
             "quick_start": settings.quick_start,
+            "goku_hold": settings.goku_hold,
         }
         try:
             self.root.mkdir(parents=True, exist_ok=True)

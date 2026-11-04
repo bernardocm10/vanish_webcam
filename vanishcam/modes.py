@@ -26,7 +26,8 @@ from .effects.ash import (
     EFFECT_SECONDS as ASH_EFFECT_SECONDS, HANDS_UP_HOLD_SECONDS, make_ash, render_ash, render_remains,
 )
 from .effects.goku import (
-    EFFECT_SECONDS as GOKU_EFFECT_SECONDS, SOUND_NAME as GOKU_SOUND_NAME, HoldTracker, make_speed_lines,
+    EFFECT_SECONDS as GOKU_EFFECT_SECONDS, HOLD_SECONDS as GOKU_HOLD_SECONDS, SOUND_NAME as GOKU_SOUND_NAME,
+    HoldTracker, make_speed_lines,
     render_teleport, sound_path, teleport_region,
 )
 from .effects.itachi import (
@@ -129,6 +130,9 @@ class Mode:
 
     def background_changed(self) -> None:
         """The background was refreshed; drop anything drawn on top of the old one."""
+
+    def configure(self, settings) -> None:
+        """Take the preferences this effect uses (user_data.Settings); most use none."""
 
     def render(self, info: FrameInfo) -> np.ndarray:
         raise NotImplementedError
@@ -373,7 +377,9 @@ class GokuMode(Mode):
 
     def __init__(self, segment: Segment, sound=None):
         super().__init__(segment, sound)
-        self.hold = HoldTracker()
+        # How long the gesture is held, to vanish and to come back: set on the SETTINGS tab.
+        self.hold_seconds = GOKU_HOLD_SECONDS
+        self.hold = HoldTracker(hold_seconds=self.hold_seconds)
         self.countdown: int | None = None
         self.lines: np.ndarray | None = None
         self.mask: np.ndarray | None = None
@@ -402,9 +408,15 @@ class GokuMode(Mode):
         self.region = None
         self.mask = None
 
+    def configure(self, settings) -> None:
+        if settings.goku_hold != self.hold_seconds:
+            self.hold_seconds = settings.goku_hold
+            # A pose being held starts counting again with the new time.
+            self.hold = HoldTracker(hold_seconds=self.hold_seconds)
+
     def reset(self) -> None:
         super().reset()
-        self.hold = HoldTracker()
+        self.hold = HoldTracker(hold_seconds=self.hold_seconds)
         self.region = None
         self.mask = None
 

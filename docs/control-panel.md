@@ -10,7 +10,7 @@ The panel is styled like a broadcast control surface: a light faceplate, black i
 
 It follows your system language (see [Language](configuration.md#language)). This guide uses the English labels, with the Portuguese ones in parentheses.
 
-The panel has three tabs in its black top bar: **LIVE** (*AO VIVO*), where the app opens, with everything below; **MEMES**, with the [meme reactions](memes.md); and **SETTINGS** (*AJUSTES*), with [quick start](#quick-start-without-the-room-capture) and the [keyboard shortcuts](#keyboard-shortcuts). The screenshot shows the panel before the tabs were added.
+The panel has three tabs in its black top bar: **LIVE** (*AO VIVO*), where the app opens, with everything below; **MEMES**, with the [meme reactions](memes.md); and **SETTINGS** (*AJUSTES*), with [quick start](#quick-start-without-the-room-capture), how long to hold [Goku's gesture](effects.md#3--goku) (**−** and **+**, from 0.1 to 3 s), and the [keyboard shortcuts](#keyboard-shortcuts). The screenshot shows the panel before the tabs were added.
 
 ## What is on the panel
 
