@@ -34,7 +34,7 @@ python3 -m venv .venv
 
 The **VanishCam** window opens: the control panel on the left, the live video beside it. Then:
 
-1. **Step out of the frame for 4 seconds** so the app can capture your room. Skipped if you pick a picture as the background.
+1. **Step out of the frame for 4 seconds** so the app can capture your room. Skipped if you pick a picture as the background. In a hurry? Click **SKIP**, or turn on **Quick start** in SETTINGS: the app starts at once and guesses what is behind you until it sees it (see [Quick start](docs/control-panel.md#quick-start-without-the-room-capture)).
 2. **Pick an effect and a background** in the panel.
 3. **Make the gesture** and vanish. Click **REAPPEAR** (or make the gesture again, in Goku) to come back.
 

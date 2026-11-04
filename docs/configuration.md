@@ -20,6 +20,7 @@ Pass them after the start command, for example `.venv/bin/python -m vanishcam --
 | `--fullscreen` | Start in fullscreen, with only the video |
 | `--video-window` | Start with the video detached in its own **VanishCam - Video** window (**DETACH** in the panel does the same) |
 | `--static-background` | Keep the captured background as it is instead of updating it |
+| `--quick-start` | Start without the 4-second room capture: what you cover is guessed until the camera sees it (the **Quick start** switch, for one run) |
 | `--gesture-debug` | Print gesture recognition details in the terminal |
 | `--lang en\|pt` | Interface language (default: the system language) |
 

@@ -17,7 +17,9 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-from .background import fit_background, load_background_image, replace_background, update_background
+from .background import (
+    fit_background, guess_background, learn_unseen, load_background_image, replace_background, update_background,
+)
 from .call_audio import CallSound, VirtualMic, open_virtual_mic
 from .camera import (
     CameraFeed, CameraInfo, FrameReader, device_instance_id, dim_for_card, list_cameras, open_camera,
@@ -218,10 +220,11 @@ def run_camera(args: argparse.Namespace, resources: ExitStack, mode_name: str | 
 
     shortcuts = saved.shortcuts
     memes = saved.memes
+    quick_start = saved.quick_start
 
     def save_settings(mode: str | None = None) -> None:
         """Every preference at once: saving one must not drop the others."""
-        user_data.save(Settings(mode or effect.name, chosen, camera_name(), detached, shortcuts, memes))
+        user_data.save(Settings(mode or effect.name, chosen, camera_name(), detached, shortcuts, memes, quick_start))
 
     chosen: Path | None = None
     background_source: np.ndarray | None = None  # Chosen picture, at its original resolution.
@@ -294,6 +297,10 @@ def run_camera(args: argparse.Namespace, resources: ExitStack, mode_name: str | 
     background: np.ndarray | None = None
     real_background: np.ndarray | None = None  # Last real background: switching back needs no recalibration.
     background_samples: list[np.ndarray] = []
+    # Started without capturing the room: where the background is still a guess (None: all seen).
+    unseen: np.ndarray | None = None
+    # Skip the capture at the next frame: quick start, or SKIP pressed while capturing.
+    skip_capture = bool(quick_start or getattr(args, "quick_start", False))
     virtual_camera = None
     virtual_camera_initialized = False
     calibration_remaining = None
@@ -329,7 +336,8 @@ def run_camera(args: argparse.Namespace, resources: ExitStack, mode_name: str | 
     if state.fullscreen:
         apply_fullscreen(True)
     if background_source is None:
-        print(f"[VanishCam] {t('loop.step_out')}")
+        if not skip_capture:
+            print(f"[VanishCam] {t('loop.step_out')}")
     else:
         # The picture is the background: no calibration.
         state.phase = "running"
@@ -342,14 +350,17 @@ def run_camera(args: argparse.Namespace, resources: ExitStack, mode_name: str | 
         print(f"[VanishCam] {text}")
         message, message_until = text, now + MESSAGE_SECONDS
 
-    def start_calibration(now: float) -> None:
-        nonlocal calibration_remaining
+    def start_calibration(now: float, skip: bool = False) -> None:
+        """Capture the room again; skip: take it from the next frame and guess what the person covers."""
+        nonlocal calibration_remaining, skip_capture
         state.phase = "calibrating"
         state.calibration_started = now
         background_samples.clear()
         calibration_remaining = None
+        skip_capture = skip
         effect.mode.reset()
-        print(f"[VanishCam] {t('loop.step_out_again')}")
+        if not skip:
+            print(f"[VanishCam] {t('loop.step_out_again')}")
 
     def switch_mode(name: str) -> None:
         nonlocal effect
@@ -391,7 +402,7 @@ def run_camera(args: argparse.Namespace, resources: ExitStack, mode_name: str | 
         if path is None:
             chosen, background_source = None, None
             if real_background is None:
-                start_calibration(now)
+                start_calibration(now, skip=quick_start)
             else:
                 background = real_background
                 effect.mode.reset()
@@ -426,7 +437,7 @@ def run_camera(args: argparse.Namespace, resources: ExitStack, mode_name: str | 
         save_settings()
 
     def handle(action: tuple, now: float) -> None:
-        nonlocal gallery, cameras, shortcuts, memes
+        nonlocal gallery, cameras, shortcuts, memes, quick_start, skip_capture
         kind = action[0]
         running = state.phase == "running"
         if kind == "mode":
@@ -451,6 +462,11 @@ def run_camera(args: argparse.Namespace, resources: ExitStack, mode_name: str | 
             notify(action[1], now)
         elif kind == "recapture" and background_source is None:
             start_calibration(now)
+        elif kind == "skip_calibration" and state.phase == "calibrating":
+            skip_capture = True
+        elif kind == "quick_start":
+            quick_start = bool(action[1])
+            save_settings()
         elif kind == "reappear" and running and effect.mode.manual_keys:
             effect.mode.reappear()
         elif kind == "vanish" and running and effect.mode.manual_keys:
@@ -553,7 +569,19 @@ def run_camera(args: argparse.Namespace, resources: ExitStack, mode_name: str | 
                     # The mask stays cached for this timestamp: the effects reuse it.
                     frame = replace_background(frame, background, segment(frame, elapsed_ms))
 
-                if state.phase == "calibrating":
+                if state.phase == "calibrating" and skip_capture:
+                    # No stepping out: this frame is the room, and what the person covers is guessed.
+                    background, unseen = guess_background(frame, segment(frame, elapsed_ms))
+                    skip_capture = False
+                    background_samples.clear()
+                    real_background = background
+                    panel.set_real_background(background)
+                    state.phase = "running"
+                    mode.reset()
+                    notify(t("loop.room_guessed"), now)
+                    display = frame
+
+                elif state.phase == "calibrating":
                     elapsed = now - state.calibration_started
                     remaining = max(0, int(np.ceil(CALIBRATION_SECONDS - elapsed)))
                     if remaining != calibration_remaining:
@@ -568,6 +596,7 @@ def run_camera(args: argparse.Namespace, resources: ExitStack, mode_name: str | 
                         else:
                             background = frame.copy()
                         background_samples.clear()
+                        unseen = None  # A full capture: nothing left to guess.
                         real_background = background
                         panel.set_real_background(background)
                         state.phase = "running"
@@ -609,15 +638,23 @@ def run_camera(args: argparse.Namespace, resources: ExitStack, mode_name: str | 
                     # On a copy: the effect's own frames (a frozen vanished one) stay clean.
                     display = meme_layer.render(display, now)
 
-                    # The background follows light and small movements, even while invisible.
+                    # The background follows light and small movements, even while invisible,
+                    # and learns what a quick start had to guess as soon as the camera sees it.
                     if (
-                        not args.static_background
+                        (unseen is not None or not args.static_background)
                         and background_source is None
                         and mode.phase in ("ready", "vanished")
                         and now - state.last_background_update >= BACKGROUND_UPDATE_SECONDS
                     ):
                         state.last_background_update = now
-                        background = update_background(background, frame, segment(frame, elapsed_ms))
+                        mask = segment(frame, elapsed_ms)
+                        if unseen is not None:
+                            background, unseen = learn_unseen(background, frame, mask, unseen)
+                            if unseen is None:
+                                panel.set_real_background(background)
+                                notify(t("loop.room_learned"), now)
+                        if not args.static_background:
+                            background = update_background(background, frame, mask)
                         real_background = background
                         mode.background_changed()
 
@@ -644,6 +681,7 @@ def run_camera(args: argparse.Namespace, resources: ExitStack, mode_name: str | 
                 cameras=cameras, camera_index=camera_index, camera_detail=camera_detail,
                 camera_state=camera_state(camera),
                 can_adjust=platform.system() == "Windows", detached=detached, shortcuts=shortcuts, memes=memes,
+                calibrating=state.phase == "calibrating" and background_source is None, quick_start=quick_start,
             ), display)
 
             # The full code: masking it to 8 bits would turn other keys into letters (End into W).
