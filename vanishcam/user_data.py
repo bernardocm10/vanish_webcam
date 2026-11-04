@@ -42,6 +42,7 @@ class Settings:
     detached: bool = False  # The video in its own window.
     shortcuts: Shortcuts = field(default_factory=Shortcuts)
     memes: Memes = field(default_factory=Memes)
+    quick_start: bool = False  # Start without capturing the room.
 
 
 class UserData:
@@ -71,7 +72,9 @@ class UserData:
         detached = data.get("detached") is True
         shortcuts = Shortcuts.from_json(data.get("shortcuts"))
         memes = Memes.from_json(data.get("memes"), self.root)
-        return Settings(mode, Path(background) if background else None, camera, detached, shortcuts, memes)
+        quick_start = data.get("quick_start") is True
+        return Settings(mode, Path(background) if background else None, camera, detached, shortcuts, memes,
+                        quick_start)
 
     def save(self, settings: Settings) -> None:
         data = {
@@ -81,6 +84,7 @@ class UserData:
             "detached": settings.detached,
             "shortcuts": settings.shortcuts.to_json(),
             "memes": settings.memes.to_json(self.root),
+            "quick_start": settings.quick_start,
         }
         try:
             self.root.mkdir(parents=True, exist_ok=True)
