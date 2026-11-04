@@ -9,6 +9,9 @@ needs no GUI toolkit.
 from __future__ import annotations
 
 import queue
+import re
+import subprocess
+import sys
 import threading
 import time
 from dataclasses import dataclass
@@ -50,6 +53,14 @@ TABS = ("live", "memes", "settings")
 MEME_ROW = 44  # Each gesture on the MEMES tab.
 MEME_THUMB = (52, 36)
 SHORTCUT_ROW = 28  # Each action on the SETTINGS tab.
+# A panel taller than the window scrolls below its top bar (the tabs stay in reach): with the wheel
+# over it, or with the bar on its right edge.
+SCROLLBAR = 6  # Drawn width.
+SCROLLBAR_HIT = 14  # Width that answers the mouse, inside the panel's right margin.
+SCROLL_THUMB_MIN = 32
+WHEEL_STEP = 60
+# The window starts no bigger than this share of the screen.
+SCREEN_SHARE = (0.95, 0.88)
 
 # Broadcast control surface: light faceplate, black ink, a single signal color.
 FACE = (232, 229, 222)
@@ -667,6 +678,70 @@ class PanelRenderer:
         footer(view, spots, text, line, fit)
 
 
+def screen_size() -> tuple[int, int] | None:
+    """The screen's usable size in pixels, when the system says; None otherwise."""
+    try:
+        if sys.platform == "win32":
+            import ctypes
+            # SM_CXFULLSCREEN, SM_CYFULLSCREEN: the work area without the taskbar.
+            metrics = ctypes.windll.user32.GetSystemMetrics
+            size = (metrics(16), metrics(17))
+        else:
+            output = subprocess.run(["xrandr", "--current"], capture_output=True, text=True, timeout=1).stdout
+            match = re.search(r"current (\d+) x (\d+)", output)
+            if match is None:
+                return None
+            size = (int(match[1]), int(match[2]))
+    except (OSError, AttributeError, ValueError, subprocess.SubprocessError):
+        return None
+    return size if size[0] > 0 and size[1] > 0 else None
+
+
+def starting_size(width: int, height: int, screen: tuple[int, int] | None) -> tuple[int, int]:
+    """The window's first size: what it wants, within the screen (the panel then scrolls)."""
+    if screen is None:
+        return width, height
+    return (min(width, max(WIDTH, round(screen[0] * SCREEN_SHARE[0]))),
+            min(height, max(240, round(screen[1] * SCREEN_SHARE[1]))))
+
+
+@dataclass(frozen=True)
+class ScrollBar:
+    """Where the panel is scrolled to and the bar that shows it, below the fixed top bar."""
+
+    visible: int  # Window height below the top bar.
+    total: int    # Panel height below the top bar.
+    offset: int   # How many panel rows are scrolled out of sight.
+
+    @property
+    def limit(self) -> int:
+        return max(0, self.total - self.visible)
+
+    @property
+    def thumb(self) -> tuple[int, int]:
+        """Top and bottom of the thumb, in pixels below the top bar."""
+        length = max(SCROLL_THUMB_MIN, round(self.visible * self.visible / max(1, self.total)))
+        length = min(length, self.visible)
+        top = round(self.offset / self.limit * (self.visible - length)) if self.limit else 0
+        return top, top + length
+
+    def offset_at(self, thumb_top: float) -> int:
+        """The offset that puts the thumb's top at thumb_top."""
+        top, bottom = self.thumb
+        room = self.visible - (bottom - top)
+        return clamp_scroll(round(thumb_top / room * self.limit) if room > 0 else 0, self.limit)
+
+
+def wheel_delta(flags: int) -> int:
+    """The wheel's signed step from an OpenCV mouse event's flags (high 16 bits): positive is up."""
+    delta = (flags >> 16) & 0xFFFF
+    return delta - 0x10000 if delta >= 0x8000 else delta
+
+
+def clamp_scroll(offset: int, limit: int) -> int:
+    return max(0, min(limit, int(offset)))
+
+
 class ControlPanel:
     """The app window: shows a PanelView beside the video and turns clicks into actions.
 
@@ -693,6 +768,10 @@ class ControlPanel:
         self.fullscreen = False
         self.fullscreen_since = 0.0
         self.detached = False
+        # How far the panel is scrolled, and the drag of its bar: (mouse y, thumb top) at the press.
+        self.scroll = 0
+        self.scroll_bar: ScrollBar | None = None
+        self.dragging: tuple[int, int] | None = None
         self.drawn = None
         self.panel: np.ndarray | None = None
         self.size: tuple[int, int] | None = None
@@ -708,10 +787,41 @@ class ControlPanel:
         cv2.setMouseCallback(title, self._on_mouse)
 
     def _on_mouse(self, event, x, y, flags, userdata) -> None:
+        bar = self.scroll_bar if not self.fullscreen else None
+        if event == cv2.EVENT_MOUSEWHEEL:
+            if bar is not None and x < WIDTH:
+                step = -WHEEL_STEP if wheel_delta(flags) > 0 else WHEEL_STEP
+                self.scroll = clamp_scroll(self.scroll + step, bar.limit)
+            return
+        if (event == cv2.EVENT_LBUTTONDOWN and bar is not None and bar.limit
+                and WIDTH - SCROLLBAR_HIT <= x < WIDTH and y >= BAR):
+            top, bottom = bar.thumb
+            if not top <= y - BAR < bottom:
+                # On the track: the thumb jumps there, centered on the mouse.
+                self.scroll = bar.offset_at(y - BAR - (bottom - top) // 2)
+                top = self._bar().thumb[0]
+            self.dragging = (y, top)
+            return
         if event == cv2.EVENT_MOUSEMOVE:
             self.hover = (x, y)
+            if self.dragging is not None and bar is not None:
+                start_y, start_top = self.dragging
+                self.scroll = bar.offset_at(start_top + y - start_y)
         elif event == cv2.EVENT_LBUTTONUP:
+            if self.dragging is not None:
+                self.dragging = None  # The end of a drag is not a click.
+                return
             self.clicks.append((x, y))
+
+    def _bar(self) -> ScrollBar:
+        bar = self.scroll_bar
+        return ScrollBar(bar.visible, bar.total, self.scroll)
+
+    def _panel_point(self, point: tuple[int, int] | None) -> tuple[int, int] | None:
+        """A window point in panel coordinates: below the top bar the panel may be scrolled."""
+        if point is None:
+            return None
+        return point if point[1] < BAR else (point[0], point[1] + self.scroll)
 
     def set_real_background(self, bgr: np.ndarray | None) -> None:
         self.renderer.set_real_background(bgr)
@@ -732,9 +842,11 @@ class ControlPanel:
         if self.size is None:
             # Room for the panel, and for a 16:9 video beside it unless the video has its own window.
             if self.detached:
-                self.size = (WIDTH, panel_height)
+                wanted = (WIDTH, panel_height)
             else:
-                self.size = (WIDTH + VIDEO_WIDTH, max(panel_height, VIDEO_WIDTH * 9 // 16))
+                wanted = (WIDTH + VIDEO_WIDTH, max(panel_height, VIDEO_WIDTH * 9 // 16))
+            # On a small screen the window starts smaller and the panel scrolls.
+            self.size = starting_size(*wanted, screen_size())
             cv2.resizeWindow(self.title, *self.size)
             return self.size
         try:
@@ -748,19 +860,24 @@ class ControlPanel:
     def show(self, view: PanelView, video: np.ndarray | None = None) -> None:
         # The panel is redrawn only when something changes: the view, the item under the
         # mouse, a thumbnail, the open menu. The video beside it, when a new frame comes.
-        over = hit(self.regions, *self.hover) if self.hover else None
+        hover = self._panel_point(self.hover)
+        over = hit(self.regions, *hover) if hover else None
         key = (view, over.box if over else None, self.renderer.version, self.menu, self.tab, self.capturing)
         panel_changed = key != self.drawn
         if panel_changed:
             self.panel, self.regions = self.renderer.render(
-                view, self.hover, self.menu, tab=self.tab, capturing=self.capturing,
+                view, hover, self.menu, tab=self.tab, capturing=self.capturing,
             )
             self.drawn = key
         panel = self.panel
         width, height = self._window_size(panel.shape[0])
+        # A taller panel than the window scrolls; a shorter one sits at the top.
+        self.scroll_bar = ScrollBar(max(1, height - BAR), max(1, panel.shape[0] - BAR), 0)
+        self.scroll = clamp_scroll(self.scroll, self.scroll_bar.limit)
+        self.scroll_bar = self._bar()
         hinting = self.fullscreen and time.monotonic() - self.fullscreen_since < FULLSCREEN_HINT_SECONDS
         layout = ((width, height), self.fullscreen, self.detached, hinting,
-                  None if video is None else video.shape, panel.shape)
+                  None if video is None else video.shape, panel.shape, self.scroll, self.dragging is not None)
         if layout == self.layout and not panel_changed and video is self.video:
             return  # Nothing new: no frame since the last call (a slow webcam), no hover.
         if layout != self.layout:
@@ -776,9 +893,12 @@ class ControlPanel:
         else:
             area = None if self.detached or width <= WIDTH else (WIDTH, 0, width - WIDTH, height)
             if panel_changed:
-                columns, rows = min(width, WIDTH), min(height, panel.shape[0])
+                columns, rows = min(width, WIDTH), min(height, panel.shape[0] - self.scroll)
                 canvas[:, :columns] = FACE[::-1]  # Below the panel, when the window is taller.
-                canvas[:rows, :columns] = panel[:rows, :columns]
+                canvas[:min(rows, BAR), :columns] = panel[:min(rows, BAR), :columns]
+                if rows > BAR:
+                    canvas[BAR:rows, :columns] = panel[BAR + self.scroll:self.scroll + rows, :columns]
+                self._draw_scroll_bar(canvas, columns)
         if area is not None and video_changed:
             place(video, canvas, area)
         self.video = video
@@ -789,17 +909,27 @@ class ControlPanel:
                         cv2.FONT_HERSHEY_SIMPLEX, 0.6, (230, 230, 230), 1, cv2.LINE_AA)
         cv2.imshow(self.title, canvas)
 
+    def _draw_scroll_bar(self, canvas: np.ndarray, columns: int) -> None:
+        bar = self.scroll_bar
+        if bar is None or not bar.limit or columns < WIDTH:
+            return
+        x0, x1 = WIDTH - SCROLLBAR - 3, WIDTH - 3
+        canvas[BAR:, x0:x1] = RULE[::-1]
+        top, bottom = bar.thumb
+        canvas[BAR + top:BAR + bottom, x0:x1] = (INK if self.dragging is not None else GREY)[::-1]
+
     def poll(self) -> list[tuple]:
         actions = []
         clicks, self.clicks = self.clicks, []
         if self.fullscreen:
             clicks = []  # Only the video is on screen.
         for x, y in clicks:
-            region = hit(self.regions, x, y)
+            region = hit(self.regions, *self._panel_point((x, y)))
             if region is None:
                 continue
             if region.action[0] == "tab":
                 self.tab, self.menu, self.capturing = region.action[1], None, None
+                self.scroll = 0  # Each tab starts at its top.
                 continue
             if region.action[0] == "capture":
                 self.capturing = None if self.capturing == region.action[1] else region.action[1]

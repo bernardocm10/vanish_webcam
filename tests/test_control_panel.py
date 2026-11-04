@@ -14,7 +14,7 @@ from vanishcam import app
 from vanishcam import detectors, segmentation
 from vanishcam.camera import CameraInfo
 from vanishcam.control_panel import (
-    ADD_TILE, AMBER, BAR, MODE_CARDS, PAD, STAGE, WIDTH, ControlPanel, PanelRenderer, PanelView, fit_into, hit, key_legend,
+    ADD_TILE, AMBER, BAR, MODE_CARDS, PAD, SCROLLBAR_HIT, STAGE, WIDTH, ControlPanel, PanelRenderer, PanelView, fit_into, hit, key_legend,
     panel_height, tiles,
 )
 from .test_video_output import TEST_SHORTCUTS, InlineRecognizer, app_mocks, arguments, video_clock
@@ -330,6 +330,7 @@ class ControlPanelWindowTests(unittest.TestCase):
         for name in ("namedWindow", "setMouseCallback", "destroyWindow", "resizeWindow", "setWindowProperty"):
             mocks.enter_context(patch.object(control_panel.cv2, name))
         mocks.enter_context(patch.object(control_panel.cv2, "getWindowImageRect", return_value=(0, 0, *self.SIZE)))
+        mocks.enter_context(patch.object(control_panel, "screen_size", return_value=None))
         self.imshow = mocks.enter_context(patch.object(control_panel.cv2, "imshow"))
         self.panel = ControlPanel()
         self.render = mocks.enter_context(patch.object(self.panel.renderer, "render", wraps=self.panel.renderer.render))
@@ -339,7 +340,8 @@ class ControlPanelWindowTests(unittest.TestCase):
         region = next(r for r in self.panel.regions if r.action == action)
         x = (region.box[0] + region.box[2]) / 2
         y = (region.box[1] + region.box[3]) / 2
-        self.panel._on_mouse(cv2.EVENT_LBUTTONUP, x, y, 0, None)
+        # In window pixels: below the top bar the panel may be scrolled.
+        self.panel._on_mouse(cv2.EVENT_LBUTTONUP, x, y if y < BAR else y - self.panel.scroll, 0, None)
 
     def test_poll_switches_tab_and_starts_capture(self):
         on = PanelView("normal", "Pronto", shortcuts=Shortcuts().with_enabled(True))
@@ -400,6 +402,84 @@ class ControlPanelWindowTests(unittest.TestCase):
         self.panel.show(view, None)
         shown = self.imshow.call_args.args[1]
         self.assertTrue((shown[:, WIDTH:] == control_panel.FACE[::-1]).all())
+
+    def short_window(self, height=400):
+        """The window shrunk below the panel's height, after the first frame."""
+        control_panel.cv2.getWindowImageRect.return_value = (0, 0, self.SIZE[0], height)
+        view = PanelView("normal", "Pronto")
+        self.panel.show(view, self.video)
+        self.panel.show(view, self.video)
+        return view
+
+    def test_a_short_window_scrolls_the_panel_with_the_wheel(self):
+        view = self.short_window()
+        total = panel_height(view)
+        panel, _ = PanelRenderer().render(view)
+        # Scrolling down with the wheel over the panel, up to the bottom and no further.
+        for _ in range(20):
+            self.panel._on_mouse(cv2.EVENT_MOUSEWHEEL, 100, 100, -120 << 16, None)
+        self.assertEqual(self.panel.scroll, total - 400)
+        self.panel.show(view, self.video)
+        shown = self.imshow.call_args.args[1]
+        # The top bar stays; the rest shows the bottom of the panel.
+        np.testing.assert_array_equal(shown[:BAR, :WIDTH], panel[:BAR])
+        np.testing.assert_array_equal(shown[BAR:, :WIDTH - 2 * SCROLLBAR_HIT], panel[total - 400 + BAR:, :WIDTH - 2 * SCROLLBAR_HIT])
+        # The wheel over the video does not scroll the panel.
+        self.panel._on_mouse(cv2.EVENT_MOUSEWHEEL, WIDTH + 50, 100, 120 << 16, None)
+        self.assertEqual(self.panel.scroll, total - 400)
+
+    def test_clicks_land_on_the_scrolled_panel(self):
+        self.short_window()
+        self.panel.scroll = 150
+        self.panel.show(PanelView("normal", "Pronto"), self.video)
+        self.click(("vanish",))
+        self.assertEqual(self.panel.poll(), [("vanish",)])
+        # The tabs stay where they are.
+        self.panel.show(PanelView("normal", "Pronto"), self.video)
+        region = next(r for r in self.panel.regions if r.action == ("tab", "memes"))
+        self.panel._on_mouse(cv2.EVENT_LBUTTONUP, region.box[0] + 5, region.box[1] + 5, 0, None)
+        self.panel.poll()
+        self.assertEqual(self.panel.tab, "memes")
+
+    def test_the_bar_drags_and_jumps(self):
+        view = self.short_window()
+        limit = panel_height(view) - 400
+        bar = self.panel.scroll_bar
+        top, bottom = bar.thumb
+        self.assertEqual(top, 0)
+        x = WIDTH - 5
+        # Dragging the thumb to the bottom of the track scrolls to the end, and is not a click.
+        self.panel._on_mouse(cv2.EVENT_LBUTTONDOWN, x, BAR + top + 5, 0, None)
+        self.panel._on_mouse(cv2.EVENT_MOUSEMOVE, x, 400 + 50, cv2.EVENT_FLAG_LBUTTON, None)
+        self.assertEqual(self.panel.scroll, limit)
+        self.panel._on_mouse(cv2.EVENT_LBUTTONUP, x, 450, 0, None)
+        self.assertEqual(self.panel.poll(), [])
+        # A press on the track above the thumb jumps there.
+        self.panel.show(view, self.video)
+        self.panel._on_mouse(cv2.EVENT_LBUTTONDOWN, x, BAR + 2, 0, None)
+        self.panel._on_mouse(cv2.EVENT_LBUTTONUP, x, BAR + 2, 0, None)
+        self.assertEqual(self.panel.scroll, 0)
+
+    def test_a_tall_window_has_no_bar_and_switching_tab_goes_back_to_the_top(self):
+        view = PanelView("normal", "Pronto")
+        self.panel.show(view, self.video)
+        self.panel.show(view, self.video)
+        self.assertEqual(self.panel.scroll_bar.limit, 0)
+        self.panel._on_mouse(cv2.EVENT_MOUSEWHEEL, 100, 100, -120 << 16, None)
+        self.assertEqual(self.panel.scroll, 0)
+        self.short_window()
+        self.panel.scroll = 100
+        self.click(("tab", "settings"))
+        self.panel.poll()
+        self.assertEqual(self.panel.scroll, 0)
+
+    def test_the_window_starts_within_a_small_screen(self):
+        self.assertEqual(control_panel.starting_size(1400, 634, None), (1400, 634))
+        self.assertEqual(control_panel.starting_size(1400, 634, (1366, 600)), (1298, 528))
+        self.assertEqual(control_panel.starting_size(WIDTH, 634, (300, 200)), (WIDTH, 240))
+        control_panel.screen_size.return_value = (1280, 600)
+        self.panel.show(PanelView("normal", "Pronto"), self.video)
+        control_panel.cv2.resizeWindow.assert_called_with(self.panel.title, 1216, 528)
 
     def test_effect_menu_opens_then_picks(self):
         self.panel.show(PanelView("normal", "Pronto"), self.video)
